@@ -9,9 +9,13 @@ Implement the SBP-SAT methods for the 2D elasticity equations in (Erickson + Dun
 ## Current Progress:
 - As of 7-2-2025, Operators are implemented for Adapted Fully Compatiable case (Alquist and Dunham 2020) for order 2. Current code uses the Method of Manufactured Solution for
     $u(x, y, t) = x^3 + y^3 + t^2$,
-    $x \in (-4, -4), y \in (-2, 2)$ with coordinate transformation $x(r, s) = 4r$, $y(r, s) = 2s$ 
+    $x \in (-4, -4), y \in (-2, 2)$ with coordinate transformation $x(r, s) = 4r$, $y(r, s) = 2s$
+- Code is showing same convergence at p=2, but has not been tested for p=4, 6.
 
 ## TO-DO:
+- [ ] implement the AFC and standard operators (Mattson 2012), (Erickson et al 2020) for p > 2
+- [ ] implement MMS for u(x, y, t) = sin(c(x + y) - t) to better match a wave solution
+- [ ] Automated Unit Testing for metric, operator, and other identities in the papers
 
 ## Papers:
 
