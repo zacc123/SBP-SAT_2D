@@ -18,5 +18,8 @@ Implement the SBP-SAT methods for the 2D elasticity equations in (Erickson + Dun
 - [ ] Automated Unit Testing for metric, operator, and other identities in the papers
 
 ## Papers:
+- Erickson, B. A., Kozdon, J. E., and Harvey, T. (2022), A non-stiff summation-by-parts finite difference method for the wave equation in second order form: Characteristic boundary conditions and nonlinear interfaces, Journal of Scientific Computing, doi: 10.1007/s10915-022-01961-1.
+- Kozdon, J. E., Erickson, B. A., and Wilcox, L. C. (2020), Hybridized summation-by-parts finite difference methods, Journal of Scientific Computing, doi: 10.1007/s10915-021-01448-5.
+- Erickson, B. A. and Dunham, E. M. (2014), An efficient numerical method for earthquake cycles in heterogeneous media: Alternating sub-basin and surface-rupturing events on faults crossing a sedimentary basin, Journal of Geophysical Research, doi:10.1002/2013JB010614.
 
 
