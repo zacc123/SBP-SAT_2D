@@ -120,10 +120,9 @@ function SAT_Terms(params, x, t)
     # prelim setup to clean the rest up
     NSp = NS+1
     NRp = NR + 1
-    
-    
+
     # Dirichlet Terms
-     # params from E + D 2014
+    # params from E + D 2014
     beta = 1
 
     u_res = zeros(NSp, NRp)
@@ -132,10 +131,8 @@ function SAT_Terms(params, x, t)
     convert!(x, S_GRID, R_GRID, u_res, v_res)
 
     # fault (y=y1 case) normal is in r dir so use crr
-
     # R Normal Terms
     alpha_r = -13 / DR
-
     sat_f = (kron(HIs, Ir) * transpose((alpha_r .* css) + (css *  kron(D1s[1], Ir))) * Ef * (u_res[1, :] .- g_z(R_GRID, S_GRID[1],  t)))
     sat_r = (kron(HIs, Ir) * transpose((alpha_r .* css) + (css *  kron(D1s[1], Ir))) * Er * (u_res[end, :] .- g_z(R_GRID, S_GRID[end],  t)))
 
@@ -147,7 +144,7 @@ function SAT_Terms(params, x, t)
     
 end
 
-function run_logical(rc, sc, tc, metrics, D, D1s, JH)
+function run_logical(p, rc, sc, tc, metrics, D, D1s, JH)
     # Run the SBP SAT with Euler Post Coordinate Tranform
     # INPUTS:
         # Grid spacing info
@@ -158,7 +155,7 @@ function run_logical(rc, sc, tc, metrics, D, D1s, JH)
         # D logical 2nd order operators
         # D1s logical 1st order operators
 
-    p = 2 # order for operators
+     # order for operators
 
     # Unpack and get meshes in order
     R0, RN, DR = rc
@@ -179,7 +176,7 @@ function run_logical(rc, sc, tc, metrics, D, D1s, JH)
 
     # Get SBP Operators assuming orthonormal set up on R and S
     print("Timing for SBP OP Creation:\n")
-    @time (D2s, D2r, Is, Ir, Hs, Hr, HIs, HIr, BSs, BSr, mu, Ef, Er, Es, Ed) = sbp_operators(2, S0, SN, R0, RN, NS, NR, DS, DR)
+    @time (D2s, D2r, Is, Ir, Hs, Hr, HIs, HIr, BSs, BSr, mu, Ef, Er, Es, Ed) = sbp_operators(p, S0, SN, R0, RN, NS, NR, DS, DR)
     
     # Get Jacobians and all into correct format
     J = zeros(N)
@@ -198,17 +195,8 @@ function run_logical(rc, sc, tc, metrics, D, D1s, JH)
     result = zeros(2 * (NR+ 1) * (NS + 1), NT)
     c = initialize(S_GRID, R_GRID)
 
-    
-    # Fix boundary case of D2s
-    D1s_edge, HIs, _, _ = diagonal_sbp_D1(p, NS; xc = (-1, 1))
-    rngs = 1 .+ NRp * (0:NS)
-    D1r_edge, HIr, _, _ =  diagonal_sbp_D1(p, NR; xc = (-1, 1))
-
-    D1r_corr =    (D1r_edge) # add in the Z_r term 
-    D1s_corr =  (D1s_edge)
-
-    D1r_corr =   (HIr * D1r_corr) # add in the Z_r term 
-    D1s_corr =  (HIs * D1s_corr)
+    D1r_corr =   (HIr * D1s[2]) # add in the Z_r term 
+    D1s_corr =  (HIs * D1s[1])
     
     J_mat = sparse(Diagonal(J))
 
@@ -284,7 +272,7 @@ function run(dy, dz, dt)
 
 
     # Now make the coordinate transform
-    p = 2 # order of accuracy hehe
+    p = 4 # order of accuracy hehe
 
     metrics = create_metrics_BP6(p, NZ, NY, zf_1, yf_1) # Initially do trivial one
     #metrics = create_metrics_BP6(4, NY, NZ) # Initially do trivial one
@@ -323,7 +311,7 @@ function run(dy, dz, dt)
     sc = (-1, 1, ds)
     tc = (T0, TN, dt)
 
-    x = run_logical(rc, sc, tc, metrics, D, D1s, JH)
+    x = run_logical(p, rc, sc, tc, metrics, D, D1s, JH)
     return x
    
 end

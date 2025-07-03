@@ -173,12 +173,12 @@ function get_operators_BP6(p, Nr, Ns, μ, Lx, Lz; metrics=create_metrics_BP6(p,N
     
     # Grab d0
     if j == 1
-        dr0 = S0e[1, :] # ./ crr[rng] # Make the adjustment so this is the right scale
+        dr0 = S0e[1, :]  ./ crr[rng] # Make the adjustment so this is the right scale
     end
 
     # grab dn
     if j == Nsp
-        drN = SNe[end, :] # ./ crr[rng]
+        drN = SNe[end, :]  ./ crr[rng]
     end
     # End New addition from Zac
 
@@ -240,12 +240,12 @@ function get_operators_BP6(p, Nr, Ns, μ, Lx, Lz; metrics=create_metrics_BP6(p,N
 
     # Grab d0
     if i == 1
-        ds0 = S0e[1, :] #./ css[rng]
+        ds0 = S0e[1, :] ./ css[rng]
     end
 
     # grab dn
     if i == Nsp
-        dsN = SNe[end, :] #./ css[rng]
+        dsN = SNe[end, :] ./ css[rng]
        
     end
     # End New addition from Zac
@@ -350,7 +350,6 @@ function get_operators_BP6(p, Nr, Ns, μ, Lx, Lz; metrics=create_metrics_BP6(p,N
     end
 
     H̃ = Hs ⊗ Hr
-
     # Throwing these in here to make it match the Jeremy paper when calc Ds
     HsI = Hs \ Is
     HrI = Hr \ Ir
@@ -358,15 +357,29 @@ function get_operators_BP6(p, Nr, Ns, μ, Lx, Lz; metrics=create_metrics_BP6(p,N
     H̃I = (HsI ⊗ HrI) # Get this to not remake
 
     # Now get Ds following Kozdon et al.2021
-    # print(((Hs*crrN) ⊗ (erN * drNT)) - ((Hs*crr0) ⊗ (er0 * dr0T)))
-    #print(Matrix(((H*crrN) ⊗ (erN * drNT)) - ((Hr*crr0) ⊗ (er0 * dr0T)))[1:Nrp, 1:Nrp])
-    #print(Matrix(-Ãrr)[1:Nrp, 1:Nrp])                                                      # TODO clean this up ooops
-    Drr =  H̃I * (-Ãrr) # + ( ((Hs*crrN) ⊗ (erN * drNT)) - ((Hs*crr0) ⊗ (er0 * dr0T)) ) ./ 2.0) # account for double use of C's
-    Dss =  H̃I * (-Ãss) #  + ( ((esN * dsNT) ⊗ (Hr*cssN)) - ((es0 * ds0T) ⊗ (Hr*css0)) ) ./ 0.5)
+    # For now specify here:
+    adpt_fully_comp = 0
 
-    # Get cross terms 
-    Drs =  H̃I * (-Ãrs + ( ((crsN * Qs) ⊗ (erN * erNT)) - ((crs0*Qs) ⊗ (er0 * er0T)) ))
-    Dsr =  H̃I * (-Ãsr + ( ((esN * esNT) ⊗ (csrN * Qr)) - ((es0 * es0T) ⊗ (csr0 * Qr)) ))
+    # For now add in a flag
+    # adpt fully comp is order 2q on the interior, q - 1 on the boundary
+    if adpt_fully_comp == 0                 
+      
+      # TO DO Fix this to do the correction here
+      Drr =  H̃I * (-Ãrr)
+      Dss =  H̃I * (-Ãss) 
+
+      Drs =  H̃I * (-Ãrs + ( ((crsN * Qs) ⊗ (erN * erNT)) - ((crs0*Qs) ⊗ (er0 * er0T)) ))
+      Dsr =  H̃I * (-Ãsr + ( ((esN * esNT) ⊗ (csrN * Qr)) - ((es0 * es0T) ⊗ (csr0 * Qr)) ))
+
+    else
+      # Matches all the papers in formation of operators
+      # (-A + BS) term basically VV
+      Drr =  H̃I * (-Ãrr + ( ((Hs*crrN) ⊗ (erN * drNT)) - ((Hs*crr0) ⊗ (er0 * dr0T)) ))
+      Dss =  H̃I * (-Ãss + ( ((esN * dsNT) ⊗ (Hr*cssN)) - ((es0 * ds0T) ⊗ (Hr*css0)) ))
+
+      Drs =  H̃I * (-Ãrs + ( ((crsN * Qs) ⊗ (erN * erNT)) - ((crs0*Qs) ⊗ (er0 * er0T)) ))
+      Dsr =  H̃I * (-Ãsr + ( ((esN * esNT) ⊗ (csrN * Qr)) - ((es0 * es0T) ⊗ (csr0 * Qr)) ))
+    end
 
     # Modify the operator to handle the boundary conditions
   
