@@ -84,12 +84,12 @@ function converge_2D(exact; dt=1e-4, dy=0.1, dz=0.1, tc = (0, 5), yc=(-1, -1), z
     space_errors = zeros(length(dys) + 1)
     for i in eachindex(dys)
         # run with Dy = Dz = 0.125 since that works
-        DY = dys[i]/2
+        DY = dys[i]
         DZ = dzs[i]
 
         # scaling diff
-        alpha_y = 2
-        alpha_z = 4
+        alpha_y = 1
+        alpha_z = 1
 
         ds = DY/alpha_y
         dr = DZ/alpha_z

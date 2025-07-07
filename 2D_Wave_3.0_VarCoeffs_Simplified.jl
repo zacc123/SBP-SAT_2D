@@ -85,14 +85,13 @@ end
 
 function rhs(t, x, params)
     # Total right hand side of our ODEs
-    (mu, HIy, HIz, Iy, Iz, Ef, Er, Es, Ed, BSy, BSz, dy, dz, Ny, Nz, y_mesh, z_mesh, D2rr, D2ss, D2rs, D2sr, J, sJ) = params
+    (mu, HIy, HIz, Iy, Iz, Ef, Er, Es, Ed, BSy, BSz, dy, dz, Ny, Nz, y_mesh, z_mesh, D2, D2ss, D2rs, D2sr, J, sJ) = params
     N = (Ny + 1) * (Nz + 1)
     u = x[1:N]
     v = x[N+1:2*N]
     b = zeros(2 * N)
     b[1:N] = v # move u = v part
-    D = D2rr + D2sr + D2rs + D2ss
-    b[N+1:2*N] = ((D ./ J) * u) .+ SAT_Terms(params, x, t) .+  source_term(t, y_mesh, z_mesh) # update v with sbp
+    b[N+1:2*N] = ((D2 ./ J) * u) .+ SAT_Terms(params, x, t) .+  source_term(t, y_mesh, z_mesh) # update v with sbp
     return b
 end
 
@@ -114,7 +113,7 @@ OUTPUT:
 """
 function SAT_Terms(params, x, t)
     (mu, HIs, HIr, Is, Ir, Ef, Er, Es, Ed, BSs, BSr, DS, DR, NR, NS, R_GRID,
-                 S_GRID, D2rr, D2ss, D2rs, D2sr, J, sJ, crr, css, D1s, JH, Hs, Hr) = params
+                 S_GRID, D2, D2ss, D2rs, D2sr, J, sJ, crr, css, D1s, JH, Hs, Hr) = params
     
 
     # prelim setup to clean the rest up
@@ -232,8 +231,11 @@ function run_logical(p, rc, sc, tc, metrics, D, D1s, JH)
 
     # print(Matrix(D2ss))
 
+    # Stick all the D2s together
+    D2 = D2rr + D2ss + D2rs + D2sr
+
     params = (mu, HIs, HIr, Is, Ir, Ef, Er, Es, Ed, BSs, BSr, DS, DR, NR, NS, R_GRID,
-                 S_GRID, D2rr, D2ss, D2rs, D2sr, J, metrics.sJ, crr, css, D1s, JH, Hs, Hr)
+                 S_GRID, D2, D2ss, D2rs, D2sr, J, metrics.sJ, crr, css, D1s, JH, Hs, Hr)
    
     print("\n")
     
@@ -255,9 +257,9 @@ function run(dy, dz, dt)
     Y and Z are physical, R and S are logical coordinates
     =#
     # Define Physical Meshes
-    Y0, YN, dy = (-2, 2, dz/2)
-    Z0, ZN, dz = (-4, 4, dz)
-    T0, TN, dt = (0, 2, dt)
+    Y0, YN, dy = (-1, 1, dy)
+    Z0, ZN, dz = (-1, 1, dz)
+    T0, TN, dt = (0, 3, dt)
 
     Y_GRID = Y0:dy:YN
     Z_GRID = Z0:dz:ZN
@@ -315,7 +317,7 @@ function run(dy, dz, dt)
     return x
    
 end
-converge_2D(exact; dt=1e-4, dy=1.0, dz=1.0, tc = (0, 2), yc=(-1, 1), zc = (-1, 1))
+converge_2D(exact; dt=1e-4, dy=0.25, dz=0.25, tc = (0, 3), yc=(-1, 1), zc = (-1, 1))
 
         
 

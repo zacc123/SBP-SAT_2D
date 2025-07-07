@@ -66,7 +66,7 @@ function zf_1(r,s)
     
 
     # scaling factor
-    alpha = 4.0
+    alpha = 1.0
     # shift beta = 0
     beta = 0.0
     charlie = 2
@@ -91,7 +91,7 @@ function yf_1(r,s)
     zs = zeros(i, j)
 
     # scaling factor
-    alpha = 2.0
+    alpha = 1.0
     # shift beta = 0
     beta = 0.0
     charlie = 2
@@ -112,5 +112,5 @@ function yf_1(r,s)
     return (z, zr, zs)
 end
 
-yf_s(r,s) = 2*s
-zf_r(r,s) = 4*r
+yf_s(r,s) = 1*s
+zf_r(r,s) = 1*r
