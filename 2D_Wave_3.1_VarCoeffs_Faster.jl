@@ -24,42 +24,50 @@ include("./coordinate_transform.jl") # Add in coordinate tranforms
 C = pi / 5
 
 # Exact term for Manufactured Solution - Simplified y + z + t = u(y, z, t)
-function exact(t, y, z)
+function exact(t, s, r)
     # Dear god plz be merciful
-    inside = yf_s(z, y)^3 + zf_r(z, y)^3 + t^2
-    return inside
+    inside = C * (yf_s(r, s) + zf_r(r, s)) - t
+    return sin(inside)
 end
 
 # Exact term for Manufactured Solution Partial Derv with respect to either y or z
-function exact_derv_y(t, y, z)
-    return 3*zf_r(z, y)^2
+function exact_derv_t(t, s, r)
+    inside = C * (yf_s(r, s) + zf_r(r, s)) - t
+    return -cos(inside)
 end
 
-function source_term(t, y_mesh, z_mesh)
-    ny = length(y_mesh)
-    nz = length(z_mesh)
-    res = zeros(length(y_mesh) * length(z_mesh))
-    for i in eachindex(y_mesh)
-        for z in eachindex(z_mesh)
-            res[(i-1)*nz + z] = 2 - (6*(yf_s(z_mesh[z], y_mesh[i]) + zf_r(z_mesh[z], y_mesh[i])))
+function exact_derv_y(t, s, r)
+    inside = C * (yf_s(r, s) + zf_r(r, s)) - t
+    return C * cos(inside)
+end
+
+function exact_derv_z(t, s, r)
+    inside = C * (yf_s(r, s) + zf_r(r, s)) - t
+    return C * cos(inside)
+end
+
+function source_term(t, s_mesh, r_mesh, res)
+    ns = length(s_mesh)
+    nr = length(r_mesh)
+    for i in eachindex(s_mesh)
+        for j in eachindex(r_mesh)
+            inside = C * (yf_s(r_mesh[j], s_mesh[i]) + zf_r(r_mesh[j], s_mesh[i])) - t
+            res[ns*nr + (i-1)*nr + j] += (-1 * sin(inside)) - (-2*(C^4) * sin(inside))
         end
     end
-    return res
+    return nothing
 end
 
-function initialize(y_mesh, z_mesh)
-    ny = length(y_mesh)
-    nz = length(z_mesh)
-    N = ny*nz
+function initialize(s_mesh, r_mesh)
+    ns = length(s_mesh)
+    nr = length(r_mesh)
+    N = ns*nr
     res = zeros(2*N)
 
-    # now try u(t, y, z) = t + y
-    # u(t=0) = 0 + y
-    # v(t=0) = 1
-    for i in eachindex(y_mesh)
-        for j in eachindex(z_mesh)
-            res[(i-1)*nz + j] = yf_s(z_mesh[j], y_mesh[i])^3 + zf_r(z_mesh[j], y_mesh[i])^3 # U init
-            res[(i-1)*nz + j + N] = 0 # v init
+    for i in eachindex(s_mesh)
+        for j in eachindex(r_mesh)
+            res[(i-1)*nr + j] = exact(0, s_mesh[i], r_mesh[j]) # U init
+            res[(i-1)*nr + j + N] = exact_derv_t(0, s_mesh[i], r_mesh[j]) # v init
         end
     end
     
@@ -82,19 +90,17 @@ function g_z(z_mesh, y, t)
     return [exact(t, y, z) for z in z_mesh]
 end
 
-
-function rhs(t, x, params)
+function rhs(t, x, res, params)
     # Total right hand side of our ODEs
-    (mu, HIy, HIz, Iy, Iz, Ef, Er, Es, Ed, BSy, BSz, dy, dz, Ny, Nz, y_mesh, z_mesh, D2, D2ss, D2rs, D2sr, J, sJ) = params
+    (Ef, Er, Es, Ed, dy, dz, Ny, Nz, y_mesh, z_mesh, D2, J) = params
     N = (Ny + 1) * (Nz + 1)
     u = x[1:N]
-    v = x[N+1:2*N]
-    b = zeros(2 * N)
-    b[1:N] = v # move u = v part
-    b[N+1:2*N] = ((D2 ./ J) * u) .+ SAT_Terms(params, x, t) .+  source_term(t, y_mesh, z_mesh) # update v with sbp
-    return b
+    res[1:N] = x[N+1:2*N] # move u = v part
+    res[N+1:2*N] = C^2 .* ((D2 ./ J) * u)
+    SAT_Terms!(params, x, res, t) 
+    source_term(t, y_mesh, z_mesh, res) # update v with sbp
+    return nothing
 end
-
 
 """
     SAT_Terms(params, x, t)
@@ -112,8 +118,8 @@ OUTPUT:
     - Combine stacked vector [0, ..., v] for next time step of all SAT terms.
 """
 function SAT_Terms(params, x, t)
-    (mu, HIs, HIr, Is, Ir, Ef, Er, Es, Ed, BSs, BSr, DS, DR, NR, NS, R_GRID,
-                 S_GRID, D2, D2ss, D2rs, D2sr, J, sJ, crr, css, D1s, JH, Hs, Hr) = params
+    (HIs, HIr, Is, Ir, Ef, Er, Es, Ed, DS, DR, NR, NS, R_GRID,
+                 S_GRID, D2, D2ss, D2rs, D2sr, J, sJ, crr, css, D1s, JH, Hs, Hr, u_res, v_res) = params
     
 
     # prelim setup to clean the rest up
@@ -143,6 +149,33 @@ function SAT_Terms(params, x, t)
     
 end
 
+function SAT_Terms!(params, x, res, t)
+    (Ef, Er, Es, Ed, DS, DR, NR, NS, R_GRID,
+                 S_GRID, D2, J,
+                 u_res, v_res, sat_coef1, sat_coef2) = params
+    
+
+    # prelim setup to clean the rest up
+    NSp = NS+1
+    NRp = NR + 1
+
+    # Dirichlet Terms
+    # params from E + D 2014
+    beta = 1
+    convert!(x, S_GRID, R_GRID, u_res, v_res)
+
+    # fault (y=y1 case) normal is in r dir so use crr
+    # R Normal Terms
+    
+    # sat f and r 
+    res[NSp*NRp+1:end] .+= (sat_coef1 * ((Ef * (u_res[1, :] .- g_z(R_GRID, S_GRID[1],  t))) .+ (Er * (u_res[end, :] .- g_z(R_GRID, S_GRID[end],  t))))) ./ J
+
+    res[NSp*NRp+1:end] .+=  (sat_coef2 * ((Es * (u_res[:, 1] .- g_y(S_GRID, R_GRID[1],  t))) .+ (Ed * (u_res[:, end] .- g_y(S_GRID, R_GRID[end],  t))))) ./ J
+    #sat_d = (kron(Is, HIr) * transpose((alpha_s .* crr) + (crr * kron(Is, D1s[2]))) * Ed * (u_res[:, end] .- g_y(S_GRID, R_GRID[end],  t)))
+    return nothing
+    
+end
+
 function run_logical(p, rc, sc, tc, metrics, D, D1s, JH)
     # Run the SBP SAT with Euler Post Coordinate Tranform
     # INPUTS:
@@ -155,6 +188,9 @@ function run_logical(p, rc, sc, tc, metrics, D, D1s, JH)
         # D1s logical 1st order operators
 
      # order for operators
+    # Flag to use afc or just normal ops
+    #TODO add this into functionaloity
+    afc = true
 
     # Unpack and get meshes in order
     R0, RN, DR = rc
@@ -189,59 +225,57 @@ function run_logical(p, rc, sc, tc, metrics, D, D1s, JH)
     diagonify(crr, metrics.crr)
     css = spzeros((NR+ 1) * (NS + 1), (NR+ 1) * (NS + 1))
     diagonify(css, metrics.css)
-    
-    # Init
-    result = zeros(2 * (NR+ 1) * (NS + 1), NT)
-    c = initialize(S_GRID, R_GRID)
 
-    D1r_corr =   (HIr * D1s[2]) # add in the Z_r term 
-    D1s_corr =  (HIs * D1s[1])
-    
-    J_mat = sparse(Diagonal(J))
+    if afc == true
+        # Make adustment to the edge of the operators to q-1 like in almquist paper
+        # Interior still order p=2q
+        D1r_corr =   (HIr * D1s[2]) # add in the Z_r term 
+        D1s_corr =  (HIs * D1s[1])
 
-    edge_r = spzeros(NRp, NRp)
-    edge_r[1,1] = 1
-    edge_r[end, end] = 1
+        edge_r = spzeros(NRp, NRp)
+        edge_r[1,1] = 1
+        edge_r[end, end] = 1
 
-    derv_edge_r = spzeros(NRp, NRp)
-    derv_edge_r[1,1] = -1
-    derv_edge_r[end, end] = 1
+        derv_edge_r = spzeros(NRp, NRp)
+        derv_edge_r[1,1] = -1
+        derv_edge_r[end, end] = 1
 
-    edge_s = spzeros(NSp, NSp)
-    edge_s[1,1] = 1
-    edge_s[end, end] = 1
+        edge_s = spzeros(NSp, NSp)
+        edge_s[1,1] = 1
+        edge_s[end, end] = 1
 
-    derv_edge_s = spzeros(NSp, NSp)
-    derv_edge_s[1,1] = -1
-    derv_edge_s[end, end] = 1
-    
-    D2rr = D2rr  +  (crr * kron(Is, derv_edge_r * D1r_corr))
-    D2ss = D2ss +  (css * kron(derv_edge_s * D1s_corr , Ir))
-
-    #D2rr = D2rr +  (crr * kron(Is, derv_edge_r * D1r_corr))
-    #D2ss = D2ss  +  (css * kron(derv_edge_s * D1s_corr, Ir))
-
-    print(Matrix(D2rr[1:NRp, 1:NRp]))
-    print("\n")
-    print(Matrix(D2ss[1:NRp:NRp*NSp, 1:NRp:NRp*NSp]))
-    print("\n")
-
-    # print(Matrix(D2ss))
+        derv_edge_s = spzeros(NSp, NSp)
+        derv_edge_s[1,1] = -1
+        derv_edge_s[end, end] = 1
+        
+        D2rr = D2rr  +  (crr * kron(Is, derv_edge_r * D1r_corr))
+        D2ss = D2ss +  (css * kron(derv_edge_s * D1s_corr , Ir))
+    end
 
     # Stick all the D2s together
     D2 = D2rr + D2ss + D2rs + D2sr
 
-    params = (mu, HIs, HIr, Is, Ir, Ef, Er, Es, Ed, BSs, BSr, DS, DR, NR, NS, R_GRID,
-                 S_GRID, D2, D2ss, D2rs, D2sr, J, metrics.sJ, crr, css, D1s, JH, Hs, Hr)
-   
-    print("\n")
-    
+    u_res = zeros(NSp, NRp)
+    v_res = zeros(NSp, NRp)
 
-    #@time forward_euler!(rhs, c, DT, result, T_GRID, params)
+    alpha_r = -13 / DR
+    sat_coef1 = kron(HIs, Ir) * transpose((alpha_r .* css) + (css *  kron(D1s[1], Ir)))
+
+    alpha_s = -13 / DS
+    sat_coef2 = kron(Is, HIr) * transpose((alpha_s .* crr) + (crr * kron(Is, D1s[2])))
+
+    print("DEBUG: $(typeof(sat_coef2))")
+    params = (Ef, Er, Es, Ed, DS, DR, NR, NS, R_GRID,
+                 S_GRID, D2, J,
+                 u_res, v_res, sat_coef1, sat_coef2) # Last line is all about reducing perf
+                 # Init for time stepping
+    result = zeros(2 * (NR+ 1) * (NS + 1), NT)
+    c = initialize(S_GRID, R_GRID)
+     
     print("\nTiming for RK2:\n")
-    rk2!(rhs, c, DT, result, T_GRID, params)
-
-    plot_2d!(R_GRID, S_GRID, T_GRID, result, exact)
+    @time rk2_faster!(rhs, c, DT, result, T_GRID, params)
+     print("\nTiming for Plotting:\n")
+    @time plot_2d!(R_GRID, S_GRID, T_GRID, result, exact)
 
     # Only return the final time result for error
     return result[:, end]
@@ -271,15 +305,12 @@ function run(dy, dz, dt)
 
 
     # Now make the coordinate transform
-    p = 4 # order of accuracy hehe
+    p = 6 # order of accuracy hehe
 
     metrics = create_metrics_BP6(p, NZ, NY, zf_1, yf_1) # Initially do trivial one
     #metrics = create_metrics_BP6(4, NY, NZ) # Initially do trivial one
 
     JH, D, H = get_operators_BP6(p, NZ, NY, 1.0, ZN - Z0, YN - Y0; metrics=metrics)
-
-
-    # print(JH)
 
     # Get 1st Derivative Operators
     Dr_tmp, _, _, _ =  diagonal_sbp_D1(p, NZ; xc = (-1, 1))
@@ -295,8 +326,6 @@ function run(dy, dz, dt)
     Dr[end, :] = Dr_tmp[end, :]
 
     D1s = (Ds, Dr)
-    
-    
     # Run the simulatiom
 
     # Toy problem set up the final coord tranform
@@ -304,7 +333,6 @@ function run(dy, dz, dt)
     dr = 2.0 / NZ
 
     @assert dr == ds # leave in for now for testing
-
 
     rc = (-1, 1, dr)
     sc = (-1, 1, ds)
@@ -314,7 +342,7 @@ function run(dy, dz, dt)
     return x
    
 end
-converge_2D(exact; dt=1e-4, dy=0.25, dz=0.25, tc = (0, 3), yc=(-1, 1), zc = (-1, 1))
+converge_2D(exact; dt=1e-4, dy=0.1, dz=0.1, tc = (0, 3), yc=(-1, 1), zc = (-1, 1))
 
         
 

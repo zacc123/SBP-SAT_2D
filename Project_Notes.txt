@@ -26,3 +26,17 @@ Project Notes:
 # 6-17-2025:
     Looking at 2D_Wave_3.0... and adding physical to logical conversion
         -> Adjusted Neumann BC to take sJ into account
+
+# 7-7-2025:
+    2D_Wave_3.0_VarCoeffs_Simplified.jl has working SBP SAT operators following Almquist Paper.
+        -> Only Dirichlet Terms
+        -> Using a x^3 + y^3 + t^2 as source term
+
+    2D_Wave_3.0_VarCoeffs.jl
+        -> Fixed and matched to above with the sin(C(x+y) - t) as MMS
+    
+    2D_Wave_3.1_VarCoeffs_Faster.jl
+        -> Building off the above with some tweaks to the RK2 method to try and allocate less memory
+        -> still getting 82 + GiB of allocation for Mesh size (17x17) with 3 x 10^4 steps so need to try and fix that 
+        -> Back of the envelope calc puts total allocation of result matrix to < 1 GiB ~ 100 MB, so some serious work needs to go into this
+    

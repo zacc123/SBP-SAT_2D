@@ -7,14 +7,15 @@ Repo to keep track of 2D SBP-SAT Work for eventual use in the Thrase.jl project 
 Implement the SBP-SAT methods for the 2D elasticity equations in (Erickson + Dunham, 2014), (Erickson, et al. 2020), (Almquist + Dunham 2020), (Kozdon, et al. 2021) among others (See links to papers below : ) ) using Variable Coefficients, coordinate transforms, and all that fun stuff. Ultimate goal is to take what's implemented here and use it in the [Thrase.jl](https://github.com/Thrase/Thrase.jl) code base for SEAS work.
 
 ## Current Progress:
-- As of 7-2-2025, Operators are implemented for Adapted Fully Compatiable case (Alquist and Dunham 2020) for order 2. Current code uses the Method of Manufactured Solution for
-    $u(x, y, t) = x^3 + y^3 + t^2$,
-    $x \in (-4, -4), y \in (-2, 2)$ with coordinate transformation $x(r, s) = 4r$, $y(r, s) = 2s$
-- Code is showing same convergence at p=2, but has not been tested for p=4, 6.
-
+As of 7-7-2025, 
+- MMS updated so $u(x, y, t) = sin(C(x+y) - t)$
+- AFC operators implemented for p=2,4,6, ... whatever is implemented in the diag_sbp.jl
+- Some Speed Updates (Tho minor : / ) with the most current 2D_Wave_3.1_VarCoeffs_Faster.jl
+    - Made some minor memory management to reduce total num of allocations per @time macro by 10%
+    - Need to look into better ways to identify bottlenecks and see what I can fix
 ## TO-DO:
-- [ ] implement the AFC and standard operators (Mattson 2012), (Erickson et al 2020) for p > 2
-- [ ] implement MMS for u(x, y, t) = sin(c(x + y) - t) to better match a wave solution
+- [x] implement the AFC and standard operators (Mattson 2012), (Erickson et al 2020) for p > 2
+- [x] implement MMS for u(x, y, t) = sin(c(x + y) - t) to better match a wave solution
 - [ ] Automated Unit Testing for metric, operator, and other identities in the papers
 
 ## Papers:
