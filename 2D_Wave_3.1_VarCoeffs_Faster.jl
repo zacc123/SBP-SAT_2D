@@ -23,9 +23,9 @@ include("./coordinate_transform.jl") # Add in coordinate tranforms
 # Wave speed
 const C::Float64 = pi / 5
 
-struct Params{A, B, C, D, E}
-    NR::A
-    NS::A
+struct Params{B, C, D, E}
+    NR::Int64
+    NS::Int64
     R_GRID::B
     S_GRID::B
     D2::C
@@ -334,7 +334,7 @@ function run(dy, dz, dt)
     NZp = NZ + 1
 
     # Now make the coordinate transform
-    p = 4 # order of accuracy hehe
+    p = 6 # order of accuracy hehe
 
     print("\n Create Metrics: ")
     @time metrics = create_metrics_BP6(p, NZ, NY, zf_2, yf_2) # Initially do trivial one
@@ -376,7 +376,7 @@ function run(dy, dz, dt)
     return x
    
 end
-converge_2D(exact; dt=1e-4, dy=0.2, dz=0.4, tc = (0, 1), yc=(-1, 1), zc = (-1, 1))
+converge_2D(exact; dt=1e-4, dy=0.125, dz=0.25, tc = (0, 1), yc=(-1, 1), zc = (-1, 1))
 
         
 
