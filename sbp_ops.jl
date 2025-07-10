@@ -32,6 +32,7 @@ function sbp_operators(p::Int, y0::Int, yN::Int, z0::Int, zN::Int,
     Es = kron(Iy, ez0)
     Ed = kron(Iy, ezn)
 
+    @assert issparse(Ef)
     # (D2y_test, S0_y, SN_y, HIy_test, Hy_test, r) = diagonal_sbp_D2(2, Ny; xc = (y0, yN))
     # (D2z_test, S0_z, SN_z, HIz_test, Hz_test, r) = diagonal_sbp_D2(2, Nz; xc = (z0, zN))
 

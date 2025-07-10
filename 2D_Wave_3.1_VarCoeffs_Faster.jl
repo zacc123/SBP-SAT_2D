@@ -21,7 +21,23 @@ include("./coordinate_transform.jl") # Add in coordinate tranforms
 # Globals
 
 # Wave speed
-C = pi / 5
+const C::Float64 = pi / 5
+
+struct Params{A, B, C, D, E}
+    NR::A
+    NS::A
+    R_GRID::B
+    S_GRID::B
+    D2::C
+    r1_res::D
+    r2_res::D
+    s1_res::D
+    s2_res::D
+    sat_1a::E
+    sat_1b::E
+    sat_2a::E
+    sat_2b::E
+end
 
 # Exact term for Manufactured Solution - Simplified y + z + t = u(y, z, t)
 function exact(t, s, r)
@@ -90,15 +106,51 @@ function g_z(z_mesh, y, t)
     return [exact(t, y, z) for z in z_mesh]
 end
 
-function rhs(t, x, res, params)
+function rhs(t, x, res, ps::Params)
     # Total right hand side of our ODEs
-    (Ef, Er, Es, Ed, dy, dz, Ny, Nz, y_mesh, z_mesh, D2, J) = params
-    N = (Ny + 1) * (Nz + 1)
+    N = (ps.NR + 1) * (ps.NS + 1)
     u = x[1:N]
+    #print("\nTIME DEBUG -- U Vector Assignment:")
     res[1:N] = x[N+1:2*N] # move u = v part
-    res[N+1:2*N] = C^2 .* ((D2 ./ J) * u)
-    SAT_Terms!(params, x, res, t) 
-    source_term(t, y_mesh, z_mesh, res) # update v with sbp
+    #=
+    print("\nTIME DEBUG -- V Vector Assignment with D2:")
+    @time res[N+1:2*N] = D2 * u
+    print("\nTIME DEBUG -- SAT:")
+    @time SAT_Terms!(params, x, res, t) 
+    print("\nTIME DEBUG -- SOURCE:")
+    @time source_term(t, y_mesh, z_mesh, res) # update v with sbp
+    
+    =#
+    res[N+1:2*N] = ps.D2 * u
+    SAT_Terms!(ps, x, res, t) 
+    source_term(t, ps.S_GRID, ps.R_GRID, res) # update v with sbp
+    return nothing
+end
+
+function rhs(t, x, res, ps)
+    (NR, NS,  
+    R_GRID, S_GRID,  
+    D2,
+    r1_res, r2_res, s1_res, s2_res, 
+    sat_1a, sat_1b,sat_2a, sat_2b) = ps
+
+    # Total right hand side of our ODEs
+    N = (NR + 1) * (NS + 1)
+    u = x[1:N]
+    #print("\nTIME DEBUG -- U Vector Assignment:")
+    res[1:N] = x[N+1:2*N] # move u = v part
+    #=
+    print("\nTIME DEBUG -- V Vector Assignment with D2:")
+    @time res[N+1:2*N] = D2 * u
+    print("\nTIME DEBUG -- SAT:")
+    @time SAT_Terms!(params, x, res, t) 
+    print("\nTIME DEBUG -- SOURCE:")
+    @time source_term(t, y_mesh, z_mesh, res) # update v with sbp
+    
+    =#
+    res[N+1:2*N] = D2 * u
+    SAT_Terms!(ps, x, res, t) 
+    source_term(t, S_GRID, R_GRID, res) # update v with sbp
     return nothing
 end
 
@@ -117,61 +169,50 @@ INPUTS:
 OUTPUT:
     - Combine stacked vector [0, ..., v] for next time step of all SAT terms.
 """
-function SAT_Terms(params, x, t)
-    (HIs, HIr, Is, Ir, Ef, Er, Es, Ed, DS, DR, NR, NS, R_GRID,
-                 S_GRID, D2, D2ss, D2rs, D2sr, J, sJ, crr, css, D1s, JH, Hs, Hr, u_res, v_res) = params
-    
-
+function SAT_Terms!(ps::Params, x, res, t)
     # prelim setup to clean the rest up
-    NSp = NS+1
-    NRp = NR + 1
+    NSp = ps.NS+1
+    NRp = ps.NR + 1
 
     # Dirichlet Terms
     # params from E + D 2014
     beta = 1
-
-    u_res = zeros(NSp, NRp)
-    v_res = zeros(NSp, NRp)
-    tmp = zeros((NSp) * (NRp) * 2)
-    convert!(x, S_GRID, R_GRID, u_res, v_res)
+    get_s_vectors!(x, ps.s1_res, ps.s2_res, ps.NR, ps.NS, 1, ps.NR+1)
+    get_r_vectors!(x, ps.r1_res, ps.r2_res, ps.NR, ps.NS, 1, ps.NS+1)
 
     # fault (y=y1 case) normal is in r dir so use crr
     # R Normal Terms
-    alpha_r = -13 / DR
-    sat_f = (kron(HIs, Ir) * transpose((alpha_r .* css) + (css *  kron(D1s[1], Ir))) * Ef * (u_res[1, :] .- g_z(R_GRID, S_GRID[1],  t)))
-    sat_r = (kron(HIs, Ir) * transpose((alpha_r .* css) + (css *  kron(D1s[1], Ir))) * Er * (u_res[end, :] .- g_z(R_GRID, S_GRID[end],  t)))
-
-    alpha_s = -13 / DS
-    sat_s = (kron(Is, HIr) * transpose((alpha_s .* crr) + (crr * kron(Is, D1s[2]))) * Es * (u_res[:, 1] .- g_y(S_GRID, R_GRID[1],  t)))
-    sat_d = (kron(Is, HIr) * transpose((alpha_s .* crr) + (crr * kron(Is, D1s[2]))) * Ed * (u_res[:, end] .- g_y(S_GRID, R_GRID[end],  t)))
+    # sat f and r 
+    res[NSp*NRp+1:end] .+= (ps.sat_1a * (ps.r1_res .- g_z(ps.R_GRID, ps.S_GRID[1],  t))) .+ (ps.sat_1b * (ps.r2_res .- g_z(ps.R_GRID, ps.S_GRID[end],  t)))
+    res[NSp*NRp+1:end] .+=  (ps.sat_2a * (ps.s1_res .- g_y(ps.S_GRID, ps.R_GRID[1],  t))) .+ (ps.sat_2b * (ps.s2_res .- g_y(ps.S_GRID, ps.R_GRID[end],  t)) )
     
-    return  (sat_f .+ sat_r .+ sat_s .+ sat_d) ./ J
+    return nothing
     
 end
 
-function SAT_Terms!(params, x, res, t)
-    (Ef, Er, Es, Ed, DS, DR, NR, NS, R_GRID,
-                 S_GRID, D2, J,
-                 u_res, v_res, sat_coef1, sat_coef2) = params
-    
-
+function SAT_Terms!(ps, x, res, t)
     # prelim setup to clean the rest up
+    (NR, NS,  
+    R_GRID, S_GRID,  
+    D2,
+    r1_res, r2_res, s1_res, s2_res, 
+    sat_1a, sat_1b,sat_2a, sat_2b) = ps
+
     NSp = NS+1
     NRp = NR + 1
 
     # Dirichlet Terms
     # params from E + D 2014
     beta = 1
-    convert!(x, S_GRID, R_GRID, u_res, v_res)
+    get_s_vectors!(x, s1_res, s2_res, NR, NS, 1, NR+1)
+    get_r_vectors!(x, r1_res, r2_res, NR, NS, 1, NS+1)
 
     # fault (y=y1 case) normal is in r dir so use crr
     # R Normal Terms
-    
     # sat f and r 
-    res[NSp*NRp+1:end] .+= (sat_coef1 * ((Ef * (u_res[1, :] .- g_z(R_GRID, S_GRID[1],  t))) .+ (Er * (u_res[end, :] .- g_z(R_GRID, S_GRID[end],  t))))) ./ J
-
-    res[NSp*NRp+1:end] .+=  (sat_coef2 * ((Es * (u_res[:, 1] .- g_y(S_GRID, R_GRID[1],  t))) .+ (Ed * (u_res[:, end] .- g_y(S_GRID, R_GRID[end],  t))))) ./ J
-    #sat_d = (kron(Is, HIr) * transpose((alpha_s .* crr) + (crr * kron(Is, D1s[2]))) * Ed * (u_res[:, end] .- g_y(S_GRID, R_GRID[end],  t)))
+    res[NSp*NRp+1:end] .+= (sat_1a * (r1_res .- g_z(R_GRID, S_GRID[1],  t))) .+ (sat_1b * (r2_res .- g_z(R_GRID, S_GRID[end],  t)))
+    res[NSp*NRp+1:end] .+=  (sat_2a * (s1_res .- g_y(S_GRID, R_GRID[1],  t))) .+ (sat_2b * (s2_res .- g_y(S_GRID, R_GRID[end],  t)) )
+    
     return nothing
     
 end
@@ -186,11 +227,6 @@ function run_logical(p, rc, sc, tc, metrics, D, D1s, JH)
         # metrics from the coordinate transform metrics
         # D logical 2nd order operators
         # D1s logical 1st order operators
-
-     # order for operators
-    # Flag to use afc or just normal ops
-    #TODO add this into functionaloity
-    afc = true
 
     # Unpack and get meshes in order
     R0, RN, DR = rc
@@ -216,9 +252,6 @@ function run_logical(p, rc, sc, tc, metrics, D, D1s, JH)
     # Get Jacobians and all into correct format
     J = zeros(N)
     stack!(J, metrics.J) # Stack J into same format as R, S
-    #print(metrics.sJ)
-    #->
-    D2rr, D2ss, D2rs, D2sr = D # Unpack D2 ops plus cross terms : , /
 
     # Get Coef Matrices for SAT Terms
     crr = spzeros((NR+ 1) * (NS + 1), (NR+ 1) * (NS + 1))
@@ -226,54 +259,51 @@ function run_logical(p, rc, sc, tc, metrics, D, D1s, JH)
     css = spzeros((NR+ 1) * (NS + 1), (NR+ 1) * (NS + 1))
     diagonify(css, metrics.css)
 
-    if afc == true
-        # Make adustment to the edge of the operators to q-1 like in almquist paper
-        # Interior still order p=2q
-        D1r_corr =   (HIr * D1s[2]) # add in the Z_r term 
-        D1s_corr =  (HIs * D1s[1])
-
-        edge_r = spzeros(NRp, NRp)
-        edge_r[1,1] = 1
-        edge_r[end, end] = 1
-
-        derv_edge_r = spzeros(NRp, NRp)
-        derv_edge_r[1,1] = -1
-        derv_edge_r[end, end] = 1
-
-        edge_s = spzeros(NSp, NSp)
-        edge_s[1,1] = 1
-        edge_s[end, end] = 1
-
-        derv_edge_s = spzeros(NSp, NSp)
-        derv_edge_s[1,1] = -1
-        derv_edge_s[end, end] = 1
-        
-        D2rr = D2rr  +  (crr * kron(Is, derv_edge_r * D1r_corr))
-        D2ss = D2ss +  (css * kron(derv_edge_s * D1s_corr , Ir))
-    end
+    @assert issparse(crr)
+    @assert issparse(css)
 
     # Stick all the D2s together
-    D2 = D2rr + D2ss + D2rs + D2sr
+    D2 = spzeros(NRp*NSp, NRp * NSp)
+    for i in eachindex(D)
+        D2 .+= D[i]
+    end
 
-    u_res = zeros(NSp, NRp)
-    v_res = zeros(NSp, NRp)
+    D2 .*= C^2
+    D2 ./= J
+    @assert issparse(D2)
+
+    r_res_1 = zeros(NRp)
+    r_res_end = zeros(NRp)
+    s_res_1 = zeros(NSp)
+    s_res_end = zeros(NSp)
 
     alpha_r = -13 / DR
-    sat_coef1 = kron(HIs, Ir) * transpose((alpha_r .* css) + (css *  kron(D1s[1], Ir)))
+    sat_coef1a = kron(HIs, Ir) * transpose((alpha_r .* css) + (css *  kron(D1s[1], Ir))) * Ef ./ J
+    sat_coef1b = kron(HIs, Ir) * transpose((alpha_r .* css) + (css *  kron(D1s[1], Ir))) * Er ./ J
 
     alpha_s = -13 / DS
-    sat_coef2 = kron(Is, HIr) * transpose((alpha_s .* crr) + (crr * kron(Is, D1s[2])))
+    sat_coef2a = kron(Is, HIr) * transpose((alpha_s .* crr) + (crr * kron(Is, D1s[2]))) * Es./ J
+    sat_coef2b = kron(Is, HIr) * transpose((alpha_s .* crr) + (crr * kron(Is, D1s[2]))) * Ed ./ J
 
-    print("DEBUG: $(typeof(sat_coef2))")
-    params = (Ef, Er, Es, Ed, DS, DR, NR, NS, R_GRID,
-                 S_GRID, D2, J,
-                 u_res, v_res, sat_coef1, sat_coef2) # Last line is all about reducing perf
+    @assert issparse(sat_coef1a)
+    @assert issparse(sat_coef2b)
+
+    params = (NR, NS,  
+                R_GRID, S_GRID,  
+                D2,
+                r_res_1, r_res_end, s_res_1, s_res_end, 
+                sat_coef1a, sat_coef1b,sat_coef2a, sat_coef2b) # Last line is all about reducing perf
+    ps = Params(NR, NS, R_GRID,
+                 S_GRID,  D2,
+                 r_res_1, r_res_end, s_res_1, s_res_end, sat_coef1a, sat_coef1b,sat_coef2a, sat_coef2b)
+
+    
                  # Init for time stepping
     result = zeros(2 * (NR+ 1) * (NS + 1), NT)
     c = initialize(S_GRID, R_GRID)
      
     print("\nTiming for RK2:\n")
-    @time rk2_faster!(rhs, c, DT, result, T_GRID, params)
+    @time rk2_faster!(rhs, c, DT, result, T_GRID, ps)
      print("\nTiming for Plotting:\n")
     @time plot_2d!(R_GRID, S_GRID, T_GRID, result, exact)
 
@@ -289,8 +319,8 @@ function run(dy, dz, dt)
     =#
     # Define Physical Meshes
     Y0, YN, dy = (-1, 1, dy)
-    Z0, ZN, dz = (-1, 1, dz)
-    T0, TN, dt = (0, 3, dt)
+    Z0, ZN, dz = (-2, 2, dz)
+    T0, TN, dt = (0, 1, dt)
 
     Y_GRID = Y0:dy:YN
     Z_GRID = Z0:dz:ZN
@@ -303,15 +333,17 @@ function run(dy, dz, dt)
     NYp = NY + 1
     NZp = NZ + 1
 
-
     # Now make the coordinate transform
-    p = 6 # order of accuracy hehe
+    p = 4 # order of accuracy hehe
 
-    metrics = create_metrics_BP6(p, NZ, NY, zf_1, yf_1) # Initially do trivial one
-    #metrics = create_metrics_BP6(4, NY, NZ) # Initially do trivial one
+    print("\n Create Metrics: ")
+    @time metrics = create_metrics_BP6(p, NZ, NY, zf_2, yf_2) # Initially do trivial one
+    
 
-    JH, D, H = get_operators_BP6(p, NZ, NY, 1.0, ZN - Z0, YN - Y0; metrics=metrics)
+    print("\n Get Ops: ")
+    @time JH, D, H = get_operators_BP6(p, NZ, NY, 1.0, ZN - Z0, YN - Y0; metrics=metrics)
 
+    print("\n")
     # Get 1st Derivative Operators
     Dr_tmp, _, _, _ =  diagonal_sbp_D1(p, NZ; xc = (-1, 1))
     Ds_tmp, _, _, _ =  diagonal_sbp_D1(p, NY; xc = (-1, 1))
@@ -328,6 +360,8 @@ function run(dy, dz, dt)
     D1s = (Ds, Dr)
     # Run the simulatiom
 
+    @assert issparse(Dr)
+    @assert issparse(Ds)
     # Toy problem set up the final coord tranform
     ds = 2.0 / NY
     dr = 2.0 / NZ
@@ -342,7 +376,7 @@ function run(dy, dz, dt)
     return x
    
 end
-converge_2D(exact; dt=1e-4, dy=0.1, dz=0.1, tc = (0, 3), yc=(-1, 1), zc = (-1, 1))
+converge_2D(exact; dt=1e-4, dy=0.2, dz=0.4, tc = (0, 1), yc=(-1, 1), zc = (-1, 1))
 
         
 

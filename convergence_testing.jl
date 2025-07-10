@@ -89,7 +89,7 @@ function converge_2D(exact; dt=1e-4, dy=0.1, dz=0.1, tc = (0, 5), yc=(-1, -1), z
 
         # scaling diff
         alpha_y = 1
-        alpha_z = 1
+        alpha_z = 2
 
         ds = DY/alpha_y
         dr = DZ/alpha_z
@@ -104,7 +104,9 @@ function converge_2D(exact; dt=1e-4, dy=0.1, dz=0.1, tc = (0, 5), yc=(-1, -1), z
 
         print("\nRunning DY: $(DY)\n")
         res = run(DY, DZ, dt)[1:N]
-        error = get_error_2d(res, Y_GRID, Z_GRID, tc[2], exact)
+
+        print("\nTiming for Error Measurement:\n")
+        @time error = get_error_2d(res, Y_GRID, Z_GRID, tc[2], exact)
         space_errors[i] = error * sqrt(dr*ds)
         print("\nL2 Error: $(error * sqrt(dr*ds))\n")
 

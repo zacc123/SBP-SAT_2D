@@ -66,7 +66,7 @@ function zf_1(r,s)
     
 
     # scaling factor
-    alpha = 1.0
+    alpha = 2.0
     # shift beta = 0
     beta = 0.0
     charlie = 2
@@ -91,7 +91,7 @@ function yf_1(r,s)
     zs = zeros(i, j)
 
     # scaling factor
-    alpha = 1.0
+    alpha = 4.0
     # shift beta = 0
     beta = 0.0
     charlie = 2
@@ -112,5 +112,59 @@ function yf_1(r,s)
     return (z, zr, zs)
 end
 
-yf_s(r,s) = 1*s
-zf_r(r,s) = 1*r
+function zf_2(r,s)
+    # Get size of r mesh for scaling / avg shift
+    i, j = size(r)
+    x = zeros(i, j)
+    xr = zeros(i, j)
+    xs = zeros(size(s))
+    
+
+    # scaling factor
+    alpha = 2.0
+    # shift beta = 0
+    beta = 0.0
+    charlie = 2
+
+    for row in 1:i
+        for col in 1:j
+            x[row, col] +=  alpha * r[row, col] + beta*s[row, col]
+            xr[row, col]+= alpha 
+            xs[row, col]+= beta
+        end
+    end
+
+    # Partial dervs
+    
+
+    return (x, xr, xs)
+end
+
+function yf_2(r,s)
+    # Get size of r mesh for scaling / avg shift
+    i, j = size(s)
+    y = zeros(i, j)
+    ys = zeros(i, j)
+    yr = zeros(i, j)
+
+    # scaling factor
+    alpha = 0.0
+    # shift beta = 0
+    beta =1.0
+  
+
+    for row in 1:i
+        for col in 1:j
+            y[row, col] += alpha * r[row, col] + beta * s[row, col]
+            yr[row, col] += alpha 
+            ys[row, col] += beta
+        end
+    end
+
+    return (y, yr, ys)
+end
+
+
+
+yf_s(r,s) = s
+zf_r(r,s) = 2*r

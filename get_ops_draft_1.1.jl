@@ -106,19 +106,14 @@ function get_operators_BP6(p, Nr, Ns, μ, Lx, Lz; metrics=create_metrics_BP6(p,N
     Nsp = Ns + 1
     Np = Nrp * Nsp
 
-
     # "coefficient" matrices 
     crr = μ * metrics.crr
     css = μ * metrics.css
     crs = metrics.crs
     csr = crs
     J = metrics.J
-    #crr = μ * ones(Nrp, Nsp)
-    #css = μ * ones(Nrp, Nsp)
-    #crs = zeros(Nrp, Nsp)
-    #csr = crs
-
-# Derivative operators for the rest of the computation
+   
+    # Derivative operators for the rest of the computation
     (Dr, HrI, Hr, r) = diagonal_sbp_D1(p, Nr; xc = (-1,1))
     Qr = Hr * Dr
     QrT = sparse(transpose(Qr))
@@ -130,161 +125,158 @@ function get_operators_BP6(p, Nr, Ns, μ, Lx, Lz; metrics=create_metrics_BP6(p,N
  
     Ir = sparse(I, Nrp, Nrp)
     Is = sparse(I, Nsp, Nsp)
-    #(_, S0r, SNr, _, _, Ar, _) = variable_diagonal_sbp_D2(p, Nr, μ * ones(Nrp); xc = (0,Lx))
-    #(_, S0s, SNs, _, _, As, _) = variable_diagonal_sbp_D2(p, Ns, μ * ones(Nsp); xc = (-Lz,Lz))
-  
-# Z - TO DO: Ask Brittany about these lines 126 - 131 bc they seem redundant  
+      
     #{{{ Set up the rr derivative matrix
-  ISr0 = Array{Int64,1}(undef,0)
-  JSr0 = Array{Int64,1}(undef,0)
-  VSr0 = Array{Float64,1}(undef,0)
-  ISrN = Array{Int64,1}(undef,0)
-  JSrN = Array{Int64,1}(undef,0)
-  VSrN = Array{Float64,1}(undef,0)
+    ISr0 = Array{Int64,1}(undef,0)
+    JSr0 = Array{Int64,1}(undef,0)
+    VSr0 = Array{Float64,1}(undef,0)
+    ISrN = Array{Int64,1}(undef,0)
+    JSrN = Array{Int64,1}(undef,0)
+    VSrN = Array{Float64,1}(undef,0)
 
-    # (D, S0, SN, HI, H, M, r) = variable_diagonal_sbp_D2(p, Nr, rand(Nrp))
+    
 
     # Making change to Jeremy's code here to also get the HI, H, D2
-  (_, S0e, SNe, _, _, Ae, _) = variable_diagonal_sbp_D2(p, Nr, rand(Nrp))
-  IArr = Array{Int64,1}(undef,Nsp * length(Ae.nzval))
-  JArr = Array{Int64,1}(undef,Nsp * length(Ae.nzval))
-  VArr = Array{Float64,1}(undef,Nsp * length(Ae.nzval))
-  stArr = 0
+    (_, S0e, SNe, _, _, Ae, _) = variable_diagonal_sbp_D2(p, Nr, rand(Nrp))
+    IArr = Array{Int64,1}(undef,Nsp * length(Ae.nzval))
+    JArr = Array{Int64,1}(undef,Nsp * length(Ae.nzval))
+    VArr = Array{Float64,1}(undef,Nsp * length(Ae.nzval))
+    stArr = 0
 
-  ISr0 = Array{Int64,1}(undef,Nsp * length(S0e.nzval))
-  JSr0 = Array{Int64,1}(undef,Nsp * length(S0e.nzval))
-  VSr0 = Array{Float64,1}(undef,Nsp * length(S0e.nzval))
-  stSr0 = 0
+    ISr0 = Array{Int64,1}(undef,Nsp * length(S0e.nzval))
+    JSr0 = Array{Int64,1}(undef,Nsp * length(S0e.nzval))
+    VSr0 = Array{Float64,1}(undef,Nsp * length(S0e.nzval))
+    stSr0 = 0
 
-  ISrN = Array{Int64,1}(undef,Nsp * length(SNe.nzval))
-  JSrN = Array{Int64,1}(undef,Nsp * length(SNe.nzval))
-  VSrN = Array{Float64,1}(undef,Nsp * length(SNe.nzval))
-  stSrN = 0
+    ISrN = Array{Int64,1}(undef,Nsp * length(SNe.nzval))
+    JSrN = Array{Int64,1}(undef,Nsp * length(SNe.nzval))
+    VSrN = Array{Float64,1}(undef,Nsp * length(SNe.nzval))
+    stSrN = 0
 
-  # New addition from Zac
-  # Pull out dr0 + drN directly from S's 
-  # Store as zeros then update
-  dr0 = zeros(Nrp)
-  drN = zeros(Nrp)
-  BSr_mini = SNe - S0e
-  for j = 1:Nsp
-    rng = (j-1) * Nrp .+ (1:Nrp)
-    (D2rr, S0e, SNe, HIrr, Hrr, Ae, _) = variable_diagonal_sbp_D2(p, Nr, crr[rng])
+    # New addition from Zac
+    # Pull out dr0 + drN directly from S's 
+    # Store as zeros then update
+    dr0 = zeros(Nrp)
+    drN = zeros(Nrp)
     
-    # Grab d0
-    if j == 1
-        dr0 = S0e[1, :]  ./ crr[rng] # Make the adjustment so this is the right scale
+    for j = 1:Nsp
+      rng = (j-1) * Nrp .+ (1:Nrp)
+      (D2rr, S0e, SNe, HIrr, Hrr, Ae, _) = variable_diagonal_sbp_D2(p, Nr, crr[rng])
+      
+      # Grab d0
+      if j == 1
+          dr0 = S0e[1, :]  ./ crr[rng] # Make the adjustment so this is the right scale
+      end
+
+      # grab dn
+      if j == Nsp
+          drN = SNe[end, :]  ./ crr[rng]
+      end
+      # End New addition from Zac
+
+      (Ie, Je, Ve) = findnz(Ae)
+      IArr[stArr .+ (1:length(Ve))] = Ie .+ (j-1) * Nrp
+      JArr[stArr .+ (1:length(Ve))] = Je .+ (j-1) * Nrp
+      VArr[stArr .+ (1:length(Ve))] = Hs[j,j] * Ve
+      stArr += length(Ve)
+
+      (Ie, Je, Ve) = findnz(S0e)
+      ISr0[stSr0 .+ (1:length(Ve))] = Ie .+ (j-1) * Nrp
+      JSr0[stSr0 .+ (1:length(Ve))] = Je .+ (j-1) * Nrp
+      VSr0[stSr0 .+ (1:length(Ve))] =  Hs[j,j] * Ve
+      stSr0 += length(Ve)
+
+      (Ie, Je, Ve) = findnz(SNe)
+      ISrN[stSrN .+ (1:length(Ve))] = Ie .+ (j-1) * Nrp
+      JSrN[stSrN .+ (1:length(Ve))] = Je .+ (j-1) * Nrp
+      VSrN[stSrN .+ (1:length(Ve))] =  Hs[j,j] * Ve
+      stSrN += length(Ve)
+
     end
 
-    # grab dn
-    if j == Nsp
-        drN = SNe[end, :]  ./ crr[rng]
-    end
-    # End New addition from Zac
+    Ãrr = sparse(IArr[1:stArr], JArr[1:stArr], VArr[1:stArr], Np, Np)
+    Sr0 = sparse(ISr0[1:stSr0], JSr0[1:stSr0], VSr0[1:stSr0], Np, Np)
+    SrN = sparse(ISrN[1:stSrN], JSrN[1:stSrN], VSrN[1:stSrN], Np, Np)
+    Sr0T = sparse(JSr0[1:stSr0], ISr0[1:stSr0], VSr0[1:stSr0], Np, Np)
+    SrNT = sparse(JSrN[1:stSrN], ISrN[1:stSrN], VSrN[1:stSrN], Np, Np)
 
-    (Ie, Je, Ve) = findnz(Ae)
-    IArr[stArr .+ (1:length(Ve))] = Ie .+ (j-1) * Nrp
-    JArr[stArr .+ (1:length(Ve))] = Je .+ (j-1) * Nrp
-    VArr[stArr .+ (1:length(Ve))] = Hs[j,j] * Ve
-    stArr += length(Ve)
-
-    (Ie, Je, Ve) = findnz(S0e)
-    ISr0[stSr0 .+ (1:length(Ve))] = Ie .+ (j-1) * Nrp
-    JSr0[stSr0 .+ (1:length(Ve))] = Je .+ (j-1) * Nrp
-    VSr0[stSr0 .+ (1:length(Ve))] =  Hs[j,j] * Ve
-    stSr0 += length(Ve)
-
-    (Ie, Je, Ve) = findnz(SNe)
-    ISrN[stSrN .+ (1:length(Ve))] = Ie .+ (j-1) * Nrp
-    JSrN[stSrN .+ (1:length(Ve))] = Je .+ (j-1) * Nrp
-    VSrN[stSrN .+ (1:length(Ve))] =  Hs[j,j] * Ve
-    stSrN += length(Ve)
-
-  end
-
-  Ãrr = sparse(IArr[1:stArr], JArr[1:stArr], VArr[1:stArr], Np, Np)
-  Sr0 = sparse(ISr0[1:stSr0], JSr0[1:stSr0], VSr0[1:stSr0], Np, Np)
-  SrN = sparse(ISrN[1:stSrN], JSrN[1:stSrN], VSrN[1:stSrN], Np, Np)
-  Sr0T = sparse(JSr0[1:stSr0], ISr0[1:stSr0], VSr0[1:stSr0], Np, Np)
-  SrNT = sparse(JSrN[1:stSrN], ISrN[1:stSrN], VSrN[1:stSrN], Np, Np)
-
-  dr0T = dr0'
-  drNT = drN'
+    dr0T = dr0'
+    drNT = drN'
   
   
-  #{{{ Set up the ss derivative matrix
-  (_, S0e, SNe, _, _, Ae, _) = variable_diagonal_sbp_D2(p, Ns, rand(Nsp))
-  BSs_mini = SNe - S0e
-  IAss = Array{Int64,1}(undef,Nrp * length(Ae.nzval))
-  JAss = Array{Int64,1}(undef,Nrp * length(Ae.nzval))
-  VAss = Array{Float64,1}(undef,Nrp * length(Ae.nzval))
-  stAss = 0
+    #{{{ Set up the ss derivative matrix
+    (_, S0e, SNe, _, _, Ae, _) = variable_diagonal_sbp_D2(p, Ns, rand(Nsp))
+    BSs_mini = SNe - S0e
+    IAss = Array{Int64,1}(undef,Nrp * length(Ae.nzval))
+    JAss = Array{Int64,1}(undef,Nrp * length(Ae.nzval))
+    VAss = Array{Float64,1}(undef,Nrp * length(Ae.nzval))
+    stAss = 0
 
-  ISs0 = Array{Int64,1}(undef,Nrp * length(S0e.nzval))
-  JSs0 = Array{Int64,1}(undef,Nrp * length(S0e.nzval))
-  VSs0 = Array{Float64,1}(undef,Nrp * length(S0e.nzval))
-  stSs0 = 0
+    ISs0 = Array{Int64,1}(undef,Nrp * length(S0e.nzval))
+    JSs0 = Array{Int64,1}(undef,Nrp * length(S0e.nzval))
+    VSs0 = Array{Float64,1}(undef,Nrp * length(S0e.nzval))
+    stSs0 = 0
 
-  ISsN = Array{Int64,1}(undef,Nrp * length(SNe.nzval))
-  JSsN = Array{Int64,1}(undef,Nrp * length(SNe.nzval))
-  VSsN = Array{Float64,1}(undef,Nrp * length(SNe.nzval))
-  stSsN = 0
+    ISsN = Array{Int64,1}(undef,Nrp * length(SNe.nzval))
+    JSsN = Array{Int64,1}(undef,Nrp * length(SNe.nzval))
+    VSsN = Array{Float64,1}(undef,Nrp * length(SNe.nzval))
+    stSsN = 0
 
-  ds0 = zeros(Nsp)
-  dsN = zeros(Nsp)
+    ds0 = zeros(Nsp)
+    dsN = zeros(Nsp)
  
   for i = 1:Nrp
-    rng = i .+ Nrp * (0:Ns)
-    (D2, S0e, SNe, _, _, Ae, _) = variable_diagonal_sbp_D2(p, Ns, css[rng])
-    #R = Ae - Dr' * Hr * Diagonal(css[rng]) * Dr
+      rng = i .+ Nrp * (0:Ns)
+      (D2, S0e, SNe, _, _, Ae, _) = variable_diagonal_sbp_D2(p, Ns, css[rng])
+      
 
-    # Grab d0
-    if i == 1
-        ds0 = S0e[1, :] ./ css[rng]
+      # Grab d0
+      if i == 1
+          ds0 = S0e[1, :] ./ css[rng]
+      end
+
+      # grab dn
+      if i == Nsp
+          dsN = SNe[end, :] ./ css[rng]
+        
+      end
+      # End New addition from Zac
+
+      (Ie, Je, Ve) = findnz(Ae)
+      IAss[stAss .+ (1:length(Ve))] = i .+ Nrp * (Ie .- 1)
+      JAss[stAss .+ (1:length(Ve))] = i .+ Nrp * (Je .- 1)
+      VAss[stAss .+ (1:length(Ve))] = Hr[i,i] * Ve
+      stAss += length(Ve)
+
+      (Ie, Je, Ve) = findnz(S0e)
+      ISs0[stSs0 .+ (1:length(Ve))] = i .+ Nrp * (Ie .- 1)
+      JSs0[stSs0 .+ (1:length(Ve))] = i .+ Nrp * (Je .- 1)
+      VSs0[stSs0 .+ (1:length(Ve))] = Hr[i,i] * Ve
+      stSs0 += length(Ve)
+
+      (Ie, Je, Ve) = findnz(SNe)
+      ISsN[stSsN .+ (1:length(Ve))] = i .+ Nrp * (Ie .- 1)
+      JSsN[stSsN .+ (1:length(Ve))] = i .+ Nrp * (Je .- 1)
+      VSsN[stSsN .+ (1:length(Ve))] = Hr[i,i] * Ve
+      stSsN += length(Ve)
     end
 
-    # grab dn
-    if i == Nsp
-        dsN = SNe[end, :] ./ css[rng]
-       
-    end
-    # End New addition from Zac
+    Ãss = sparse(IAss[1:stAss], JAss[1:stAss], VAss[1:stAss], Np, Np)
+    Ss0 = sparse(ISs0[1:stSs0], JSs0[1:stSs0], VSs0[1:stSs0], Np, Np)
+    SsN = sparse(ISsN[1:stSsN], JSsN[1:stSsN], VSsN[1:stSsN], Np, Np)
+    Ss0T = sparse(JSs0[1:stSs0], ISs0[1:stSs0], VSs0[1:stSs0], Np, Np)
+    SsNT = sparse(JSsN[1:stSsN], ISsN[1:stSsN], VSsN[1:stSsN], Np, Np)
 
-    (Ie, Je, Ve) = findnz(Ae)
-    IAss[stAss .+ (1:length(Ve))] = i .+ Nrp * (Ie .- 1)
-    JAss[stAss .+ (1:length(Ve))] = i .+ Nrp * (Je .- 1)
-    VAss[stAss .+ (1:length(Ve))] = Hr[i,i] * Ve
-    stAss += length(Ve)
+    ds0T = ds0'
+    dsNT = dsN' 
+    
 
-    (Ie, Je, Ve) = findnz(S0e)
-    ISs0[stSs0 .+ (1:length(Ve))] = i .+ Nrp * (Ie .- 1)
-    JSs0[stSs0 .+ (1:length(Ve))] = i .+ Nrp * (Je .- 1)
-    VSs0[stSs0 .+ (1:length(Ve))] = Hr[i,i] * Ve
-    stSs0 += length(Ve)
+    #{{{ Set up the sr and rs derivative matrices
+    Ãsr = (QsT ⊗ Ir) * sparse(1:length(crs), 1:length(crs), view(crs, :)) * (Is ⊗ Qr)
+    Ãrs = (Is ⊗ QrT) * sparse(1:length(csr), 1:length(csr), view(csr, :)) * (Qs ⊗ Ir)
+    #}}}
 
-    (Ie, Je, Ve) = findnz(SNe)
-    ISsN[stSsN .+ (1:length(Ve))] = i .+ Nrp * (Ie .- 1)
-    JSsN[stSsN .+ (1:length(Ve))] = i .+ Nrp * (Je .- 1)
-    VSsN[stSsN .+ (1:length(Ve))] = Hr[i,i] * Ve
-    stSsN += length(Ve)
-  end
-
-  Ãss = sparse(IAss[1:stAss], JAss[1:stAss], VAss[1:stAss], Np, Np)
-  Ss0 = sparse(ISs0[1:stSs0], JSs0[1:stSs0], VSs0[1:stSs0], Np, Np)
-  SsN = sparse(ISsN[1:stSsN], JSsN[1:stSsN], VSsN[1:stSsN], Np, Np)
-  Ss0T = sparse(JSs0[1:stSs0], ISs0[1:stSs0], VSs0[1:stSs0], Np, Np)
-  SsNT = sparse(JSsN[1:stSsN], ISsN[1:stSsN], VSsN[1:stSsN], Np, Np)
-
-  ds0T = ds0'
-  dsNT = dsN' 
-  
-
-  #{{{ Set up the sr and rs derivative matrices
-  Ãsr = (QsT ⊗ Ir) * sparse(1:length(crs), 1:length(crs), view(crs, :)) * (Is ⊗ Qr)
-  Ãrs = (Is ⊗ QrT) * sparse(1:length(csr), 1:length(csr), view(csr, :)) * (Qs ⊗ Ir)
-  #}}}
-
-  Ã = Ãrr + Ãss + Ãrs + Ãsr
+    Ã = Ãrr + Ãss + Ãrs + Ãsr
 
     Er0 = sparse([1], [1], [1], Nrp, Nrp)
     ErN = sparse([Nrp], [Nrp], [1], Nrp, Nrp)
@@ -301,7 +293,7 @@ function get_operators_BP6(p, Nr, Ns, μ, Lx, Lz; metrics=create_metrics_BP6(p,N
     es0T = sparse([1], [1  ], [1], 1, Nsp)
     esNT = sparse([1], [Nsp], [1], 1, Nsp)
 
-        #
+    
     # Store coefficient matrices as matrices
     #
     crs0 = sparse(Diagonal(crs[1:Nrp]))
@@ -363,10 +355,12 @@ function get_operators_BP6(p, Nr, Ns, μ, Lx, Lz; metrics=create_metrics_BP6(p,N
     # For now add in a flag
     # adpt fully comp is order 2q on the interior, q - 1 on the boundary
     if adpt_fully_comp == 0                 
-      
+      edge_r = (crrN * ErN) - (crr0 * Er0)
+      edge_s = (cssN * EsN) - (css0 * Es0)
+
       # TO DO Fix this to do the correction here
-      Drr =  H̃I * (-Ãrr)
-      Dss =  H̃I * (-Ãss) 
+      Drr =  H̃I * (-Ãrr) + (Is ⊗ (HrI * edge_r * Dr)) 
+      Dss =  H̃I * (-Ãss) + ((HsI * edge_s * Ds) ⊗ Ir) 
 
       Drs =  H̃I * (-Ãrs + ( ((crsN * Qs) ⊗ (erN * erNT)) - ((crs0*Qs) ⊗ (er0 * er0T)) ))
       Dsr =  H̃I * (-Ãsr + ( ((esN * esNT) ⊗ (csrN * Qr)) - ((es0 * es0T) ⊗ (csr0 * Qr)) ))
@@ -388,7 +382,7 @@ function get_operators_BP6(p, Nr, Ns, μ, Lx, Lz; metrics=create_metrics_BP6(p,N
     (
     JH = JH,
     D = (Drr, Dss, Drs, Dsr),
-    H = (Hr, Hs),
+    H = (Hr, Hs)
     )
 end
 
