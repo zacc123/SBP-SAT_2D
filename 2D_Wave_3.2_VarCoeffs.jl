@@ -18,12 +18,15 @@ include("./convergence_testing.jl") # Moved Convergence here
 include("./get_ops_draft_1.1.jl") # Add in the get ops now
 include("./coordinate_transform.jl") # Add in coordinate tranforms
 
+# For ODE solver
+using DifferentialEquations
+
 # Globals
 
 # Wave speed
 const C::Float64 = pi / 5
 
-struct Params{B, C, D, E}
+struct Params{B, C, D, E, F}
     NR::Int64
     NS::Int64
     R_GRID::B
@@ -37,6 +40,7 @@ struct Params{B, C, D, E}
     sat_1b::E
     sat_2a::E
     sat_2b::E
+    res::F
 end
 
 # Exact term for Manufactured Solution - Simplified y + z + t = u(y, z, t)
@@ -106,12 +110,12 @@ function g_z(z_mesh, y, t)
     return [exact(t, y, z) for z in z_mesh]
 end
 
-function rhs(t, x, res, ps::Params)
+function rhs(x, ps::Params, t)
     # Total right hand side of our ODEs
     N = (ps.NR + 1) * (ps.NS + 1)
     u = x[1:N]
     #print("\nTIME DEBUG -- U Vector Assignment:")
-    res[1:N] = x[N+1:2*N] # move u = v part
+     # move u = v part
     #=
     print("\nTIME DEBUG -- V Vector Assignment with D2:")
     @time res[N+1:2*N] = D2 * u
@@ -121,12 +125,15 @@ function rhs(t, x, res, ps::Params)
     @time source_term(t, y_mesh, z_mesh, res) # update v with sbp
     
     =#
+    res = zeros(2*N)
+    res[1:N] = x[N+1:2*N]
     res[N+1:2*N] = ps.D2 * u
     SAT_Terms!(ps, x, res, t) 
     source_term(t, ps.S_GRID, ps.R_GRID, res) # update v with sbp
-    return nothing
+    return res
 end
 
+#=
 function rhs(t, x, res, ps)
     (NR, NS,  
     R_GRID, S_GRID,  
@@ -153,7 +160,7 @@ function rhs(t, x, res, ps)
     source_term(t, S_GRID, R_GRID, res) # update v with sbp
     return nothing
 end
-
+=#
 """
     SAT_Terms(params, x, t)
 
@@ -189,7 +196,7 @@ function SAT_Terms!(ps::Params, x, res, t)
     return nothing
     
 end
-
+#=
 function SAT_Terms!(ps, x, res, t)
     # prelim setup to clean the rest up
     (NR, NS,  
@@ -216,7 +223,7 @@ function SAT_Terms!(ps, x, res, t)
     return nothing
     
 end
-
+=#
 function run_logical(p, rc, sc, tc, metrics, D, D1s, JH)
     # Run the SBP SAT with Euler Post Coordinate Tranform
     # INPUTS:
@@ -288,6 +295,13 @@ function run_logical(p, rc, sc, tc, metrics, D, D1s, JH)
     @assert issparse(sat_coef1a)
     @assert issparse(sat_coef2b)
 
+    
+    
+                 # Init for time stepping
+    result = zeros(2 * (NR+ 1) * (NS + 1), NT)
+    int_res = zeros(2 * (NR+ 1) * (NS + 1))
+    c = initialize(S_GRID, R_GRID)
+
     params = (NR, NS,  
                 R_GRID, S_GRID,  
                 D2,
@@ -295,20 +309,26 @@ function run_logical(p, rc, sc, tc, metrics, D, D1s, JH)
                 sat_coef1a, sat_coef1b,sat_coef2a, sat_coef2b) # Last line is all about reducing perf
     ps = Params(NR, NS, R_GRID,
                  S_GRID,  D2,
-                 r_res_1, r_res_end, s_res_1, s_res_end, sat_coef1a, sat_coef1b,sat_coef2a, sat_coef2b)
+                 r_res_1, r_res_end, s_res_1, s_res_end, sat_coef1a, sat_coef1b,sat_coef2a, sat_coef2b,
+                 int_res)
 
-    
-                 # Init for time stepping
-    result = zeros(2 * (NR+ 1) * (NS + 1), NT)
-    c = initialize(S_GRID, R_GRID)
      
     print("\nTiming for RK2:\n")
-    @time rk2_faster!(rhs, c, DT, result, T_GRID, ps)
-     print("\nTiming for Plotting:\n")
-    @time plot_2d!(R_GRID, S_GRID, T_GRID, result, exact)
+
+
+    tspan = (T0, TN)
+    alg = Tsit5() #TSIT5 Doesnt preserve my second order convergence : (
+    prob = ODEProblem(rhs, c, tspan, ps)
+    @time sol = solve(prob, alg; abstol=1e-10, reltol=1e-10)
+    #plot(sol[1:N_x, 1], label="Numerical")
+    #plot!(func_exact(time_mesh[1], x_mesh, L), label="exact")
+    #png("ODE Solver Solution T$(sol.t[1])")
+
+     #print("\nTiming for Plotting:\n")
+    @time plot_2d!(R_GRID, S_GRID, sol.t, sol, exact)
 
     # Only return the final time result for error
-    return result[:, end]
+    return sol
 end
 
 function run(dy, dz, dt)
@@ -320,7 +340,7 @@ function run(dy, dz, dt)
     # Define Physical Meshes
     Y0, YN, dy = (-1, 1, dy)
     Z0, ZN, dz = (-1, 1, dz)
-    T0, TN, dt = (0, 1, dt)
+    T0, TN, dt = (0, 5, dt)
 
     Y_GRID = Y0:dy:YN
     Z_GRID = Z0:dz:ZN
@@ -334,14 +354,14 @@ function run(dy, dz, dt)
     NZp = NZ + 1
 
     # Now make the coordinate transform
-    p = 2 # order of accuracy hehe
+    p = 6 # order of accuracy hehe
 
     print("\n Create Metrics: ")
     @time metrics = create_metrics_BP6(p, NZ, NY, zf_2, yf_2) # Initially do trivial one
     
 
     print("\n Get Ops: ")
-    @time JH, D, H = get_operators_BP6(p, NZ, NY, 1.0, ZN - Z0, YN - Y0; metrics=metrics)
+    @time JH, D, H = get_operators_BP6(p, NZ, NY, 1.0, ZN - Z0, YN - Y0; metrics=metrics, afc=false)
 
     print("\n")
     # Get 1st Derivative Operators
@@ -376,7 +396,7 @@ function run(dy, dz, dt)
     return x
    
 end
-converge_2D(exact; dt=1e-4, dy=0.25, dz=0.25, tc = (0, 1), yc=(-1, 1), zc = (-1, 1))
+converge_2D_TSIT(exact; dt=1e-4, dy=0.125, dz=0.125, tc = (0, 5), yc=(-1, 1), zc = (-1, 1))
 
         
 

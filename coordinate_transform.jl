@@ -121,7 +121,7 @@ function zf_2(r,s)
     
 
     # scaling factor
-    alpha = 2.0
+    alpha = 1.0
     # shift beta = 0
     beta = 0.0
     charlie = 2
@@ -167,4 +167,4 @@ end
 
 
 yf_s(r,s) = s
-zf_r(r,s) = 2*r
+zf_r(r,s) = r

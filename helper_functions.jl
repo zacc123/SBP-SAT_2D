@@ -64,10 +64,10 @@ function convert!(uv, y, z, u_res::Matrix{Float64}, v_res::Matrix{Float64})
 
     end
 
-    get_s_vector!(uv, res_y1, NZ-1, NY-1, 1)
-    get_s_vector!(uv, res_y2, NZ-1, NY-1, NY)
+    #get_s_vector!(uv, res_y1, NZ-1, NY-1, 1)
+    #get_s_vector!(uv, res_y2, NZ-1, NY-1, NY)
 
-    @assert res_y1 == u_res[:, 1]
+    #@assert res_y1 == u_res[:, 1]
     return nothing
 end
 

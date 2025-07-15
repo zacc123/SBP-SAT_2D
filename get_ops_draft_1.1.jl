@@ -99,7 +99,7 @@ function create_metrics_BP6(pm, Nr, Ns,
   rx = rx, ry = ry, sx = sx, sy = sy)
 end
 
-function get_operators_BP6(p, Nr, Ns, μ, Lx, Lz; metrics=create_metrics_BP6(p,Nr,Ns))
+function get_operators_BP6(p, Nr, Ns, μ, Lx, Lz; metrics=create_metrics_BP6(p,Nr,Ns), afc=true)
 
     # In this project, take r = x, s = z (i.e. problem is set up for no coordinate transformation)
     Nrp = Nr + 1  
@@ -350,11 +350,11 @@ function get_operators_BP6(p, Nr, Ns, μ, Lx, Lz; metrics=create_metrics_BP6(p,N
 
     # Now get Ds following Kozdon et al.2021
     # For now specify here:
-    adpt_fully_comp = 0
+    
 
     # For now add in a flag
     # adpt fully comp is order 2q on the interior, q - 1 on the boundary
-    if adpt_fully_comp == 0                 
+    if afc == true                 
       edge_r = (crrN * ErN) - (crr0 * Er0)
       edge_s = (cssN * EsN) - (css0 * Es0)
 

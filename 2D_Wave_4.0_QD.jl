@@ -148,9 +148,14 @@ function rhs(t, x, res, ps)
     @time source_term(t, y_mesh, z_mesh, res) # update v with sbp
     
     =#
-    res[N+1:2*N] = D2 * u
+    res[1+N:end] .= 0
+
     SAT_Terms!(ps, x, res, t) 
     source_term(t, S_GRID, R_GRID, res) # update v with sbp
+
+    res = -1 .* res[1+N:end]
+    ans = D2 \ res[1+N:end]
+    res[1+N:end] = ans[:]
     return nothing
 end
 
@@ -319,7 +324,7 @@ function run(dy, dz, dt)
     =#
     # Define Physical Meshes
     Y0, YN, dy = (-1, 1, dy)
-    Z0, ZN, dz = (-1, 1, dz)
+    Z0, ZN, dz = (-2, 2, dz)
     T0, TN, dt = (0, 1, dt)
 
     Y_GRID = Y0:dy:YN
@@ -376,7 +381,7 @@ function run(dy, dz, dt)
     return x
    
 end
-converge_2D(exact; dt=1e-4, dy=0.25, dz=0.25, tc = (0, 1), yc=(-1, 1), zc = (-1, 1))
+converge_2D(exact; dt=1e-4, dy=0.125, dz=0.25, tc = (0, 1), yc=(-1, 1), zc = (-1, 1))
 
         
 

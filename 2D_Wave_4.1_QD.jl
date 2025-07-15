@@ -21,7 +21,7 @@ include("./coordinate_transform.jl") # Add in coordinate tranforms
 # Globals
 
 # Wave speed
-const C::Float64 = pi / 5
+const C::Float64 = 1
 
 struct Params{B, C, D, E}
     NR::Int64
@@ -49,7 +49,8 @@ end
 # Exact term for Manufactured Solution Partial Derv with respect to either y or z
 function exact_derv_t(t, s, r)
     inside = C * (yf_s(r, s) + zf_r(r, s)) - t
-    return -cos(inside)
+    return 0 # -cos(inside)
+    #return -cos(inside)
 end
 
 function exact_derv_y(t, s, r)
@@ -59,7 +60,7 @@ end
 
 function exact_derv_z(t, s, r)
     inside = C * (yf_s(r, s) + zf_r(r, s)) - t
-    return C * cos(inside)
+    return 0
 end
 
 function source_term(t, s_mesh, r_mesh, res)
@@ -67,8 +68,8 @@ function source_term(t, s_mesh, r_mesh, res)
     nr = length(r_mesh)
     for i in eachindex(s_mesh)
         for j in eachindex(r_mesh)
-            inside = C * (yf_s(r_mesh[j], s_mesh[i]) + zf_r(r_mesh[j], s_mesh[i])) - t
-            res[ns*nr + (i-1)*nr + j] += (-1 * sin(inside)) - (-2*(C^4) * sin(inside))
+            inside = C * (yf_s(r_mesh[j], s_mesh[i]) + zf_r(r_mesh[j], s_mesh[i]))# - t
+            res[ns*nr + (i-1)*nr + j] += (-2*(C^4) * sin(inside))
         end
     end
     return nothing
@@ -110,8 +111,9 @@ function rhs(t, x, res, ps::Params)
     # Total right hand side of our ODEs
     N = (ps.NR + 1) * (ps.NS + 1)
     u = x[1:N]
+    res[1:N] = x[N+1:end]
     #print("\nTIME DEBUG -- U Vector Assignment:")
-    res[1:N] = x[N+1:2*N] # move u = v part
+    #res[1:N] = x[N+1:2*N] # move u = v part
     #=
     print("\nTIME DEBUG -- V Vector Assignment with D2:")
     @time res[N+1:2*N] = D2 * u
@@ -121,36 +123,18 @@ function rhs(t, x, res, ps::Params)
     @time source_term(t, y_mesh, z_mesh, res) # update v with sbp
     
     =#
-    res[N+1:2*N] = ps.D2 * u
-    SAT_Terms!(ps, x, res, t) 
+
+    # SAT_Terms!(ps, x, res, t) 
     source_term(t, ps.S_GRID, ps.R_GRID, res) # update v with sbp
-    return nothing
-end
 
-function rhs(t, x, res, ps)
-    (NR, NS,  
-    R_GRID, S_GRID,  
-    D2,
-    r1_res, r2_res, s1_res, s2_res, 
-    sat_1a, sat_1b,sat_2a, sat_2b) = ps
+    #res[1+N:end] = -1 .* res[1+N:end]
 
-    # Total right hand side of our ODEs
-    N = (NR + 1) * (NS + 1)
-    u = x[1:N]
-    #print("\nTIME DEBUG -- U Vector Assignment:")
-    res[1:N] = x[N+1:2*N] # move u = v part
-    #=
-    print("\nTIME DEBUG -- V Vector Assignment with D2:")
-    @time res[N+1:2*N] = D2 * u
-    print("\nTIME DEBUG -- SAT:")
-    @time SAT_Terms!(params, x, res, t) 
-    print("\nTIME DEBUG -- SOURCE:")
-    @time source_term(t, y_mesh, z_mesh, res) # update v with sbp
-    
-    =#
-    res[N+1:2*N] = D2 * u
-    SAT_Terms!(ps, x, res, t) 
-    source_term(t, S_GRID, R_GRID, res) # update v with sbp
+    #print(res[1+N:end])
+    #print(size(res), "\n", size(res[1+N:end]), '\n', size(ps.D2))
+    ans = Matrix(ps.D2) \ res[1+N:end]
+    res[1+N:end] = ans[:]
+    #print(ans, "\n\n")
+    #print(res[1+N:end], "\n\n")
     return nothing
 end
 
@@ -185,33 +169,6 @@ function SAT_Terms!(ps::Params, x, res, t)
     # sat f and r 
     res[NSp*NRp+1:end] .+= (ps.sat_1a * (ps.r1_res .- g_z(ps.R_GRID, ps.S_GRID[1],  t))) .+ (ps.sat_1b * (ps.r2_res .- g_z(ps.R_GRID, ps.S_GRID[end],  t)))
     res[NSp*NRp+1:end] .+=  (ps.sat_2a * (ps.s1_res .- g_y(ps.S_GRID, ps.R_GRID[1],  t))) .+ (ps.sat_2b * (ps.s2_res .- g_y(ps.S_GRID, ps.R_GRID[end],  t)) )
-    
-    return nothing
-    
-end
-
-function SAT_Terms!(ps, x, res, t)
-    # prelim setup to clean the rest up
-    (NR, NS,  
-    R_GRID, S_GRID,  
-    D2,
-    r1_res, r2_res, s1_res, s2_res, 
-    sat_1a, sat_1b,sat_2a, sat_2b) = ps
-
-    NSp = NS+1
-    NRp = NR + 1
-
-    # Dirichlet Terms
-    # params from E + D 2014
-    beta = 1
-    get_s_vectors!(x, s1_res, s2_res, NR, NS, 1, NR+1)
-    get_r_vectors!(x, r1_res, r2_res, NR, NS, 1, NS+1)
-
-    # fault (y=y1 case) normal is in r dir so use crr
-    # R Normal Terms
-    # sat f and r 
-    res[NSp*NRp+1:end] .+= (sat_1a * (r1_res .- g_z(R_GRID, S_GRID[1],  t))) .+ (sat_1b * (r2_res .- g_z(R_GRID, S_GRID[end],  t)))
-    res[NSp*NRp+1:end] .+=  (sat_2a * (s1_res .- g_y(S_GRID, R_GRID[1],  t))) .+ (sat_2b * (s2_res .- g_y(S_GRID, R_GRID[end],  t)) )
     
     return nothing
     

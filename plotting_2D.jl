@@ -26,6 +26,7 @@ function plot_2d!(Y_GRID, Z_GRID, T_GRID, result, exact; file_dir = "./result_im
     N = (NY+1) * (NZ+1)
     NT = length(T_GRID)
 
+    print("\nTime a:", T_GRID[1],"\nTime b:", T_GRID[end], "\n")
     convert!(result[:, 1], Y_GRID, Z_GRID, u, v)
     
     plot(Z_GRID, u[1, :], label="numerical")
@@ -43,6 +44,7 @@ function plot_2d!(Y_GRID, Z_GRID, T_GRID, result, exact; file_dir = "./result_im
 
     plot(Y_GRID, u[:, 1], label="numerical")
     plot!(Y_GRID, [exact(T_GRID[end], y, Z_GRID[1]) for y in Y_GRID],label="exact")
+    plot!(Y_GRID, [exact(T_GRID[1], y, Z_GRID[1]) for y in Y_GRID],label="exact at t=0")
     png("./result_imgs/Y at Z=0, T=1")
 
     plot(Y_GRID, u[:, end], label="numerical")
@@ -60,21 +62,21 @@ function plot_2d!(Y_GRID, Z_GRID, T_GRID, result, exact; file_dir = "./result_im
     surface(Y_GRID, Z_GRID, result[1:N, 1])
     png("./result_imgs/Surface T 0.0")
 
-    surface(Y_GRID, Z_GRID, result[1:N, cld(NT, 2)])
-    png("./result_imgs/Surface T 0.5")
+    #surface(Y_GRID, Z_GRID, result[1:N, cld(NT, 2)])
+    #png("./result_imgs/Surface T 0.5")
 
     surface(Y_GRID, Z_GRID, result[1:N, end])
     png("./result_imgs/Surface T 1.0")
 
     tmp = exact_surface(result[1:N, end], Y_GRID, Z_GRID, T_GRID[end], exact)
-
+    print(norm(result[1:N, end] .- tmp))
     surface(Y_GRID, Z_GRID, result[1:N, end] .- tmp)
     png("./result_imgs/DIFF Surface T 1.0")
 
 
     # Look at z = Zgrid[5], y = Ygrid[5]
-    plot(T_GRID, result[4*(NZ+1) + 5, :], label="numerical")
-    plot!(T_GRID, [exact(t, Y_GRID[5], Z_GRID[5]) for t in T_GRID],label="exact")
+    plot(result.t, result[N, :], label="numerical")
+    plot!(result.t, [exact(t, Y_GRID[end], Z_GRID[end]) for t in result.t],label="exact")
     png("./result_imgs/T at Y=0, T=0")
 
     return nothing
@@ -100,7 +102,7 @@ function plot_1d!(Z_GRID, T_GRID, result, exact; file_dir = "./result_imgs/")
     plot(Z_GRID, u, label="numerical")
     plot!(Z_GRID, [exact(T_GRID[end], 0, z) for z in Z_GRID],label="exact")
     png("./result_imgs/Z at Y=0, T=1")
-
+  
     plot(T_GRID, result[1, :], label="numerical")
     plot!(T_GRID, [exact(t, 0, Z_GRID[1]) for t in T_GRID],label="exact")
     png("./result_imgs/Z=0 against T")
