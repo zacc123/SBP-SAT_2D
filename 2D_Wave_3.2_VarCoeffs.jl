@@ -18,6 +18,8 @@ include("./convergence_testing.jl") # Moved Convergence here
 include("./get_ops_draft_1.1.jl") # Add in the get ops now
 include("./coordinate_transform.jl") # Add in coordinate tranforms
 
+include("./unit_tests.jl")
+
 # For ODE solver
 using DifferentialEquations
 
@@ -254,7 +256,7 @@ function run_logical(p, rc, sc, tc, metrics, D, D1s, JH)
 
     # Get SBP Operators assuming orthonormal set up on R and S
     print("Timing for SBP OP Creation:\n")
-    @time (D2s, D2r, Is, Ir, Hs, Hr, HIs, HIr, BSs, BSr, mu, Ef, Er, Es, Ed) = sbp_operators(p, S0, SN, R0, RN, NS, NR, DS, DR)
+    @time (D2s, D2r, Is, Ir, Hs, Hr, HIs, HIr, BSs, BSr, mu, Ef, Er, Es, Ed) = sbp_operators_old(p, S0, SN, R0, RN, NS, NR, DS, DR)
     
     # Get Jacobians and all into correct format
     J = zeros(N)
@@ -294,10 +296,8 @@ function run_logical(p, rc, sc, tc, metrics, D, D1s, JH)
 
     @assert issparse(sat_coef1a)
     @assert issparse(sat_coef2b)
-
     
-    
-                 # Init for time stepping
+    # Init for time stepping
     result = zeros(2 * (NR+ 1) * (NS + 1), NT)
     int_res = zeros(2 * (NR+ 1) * (NS + 1))
     c = initialize(S_GRID, R_GRID)
@@ -312,10 +312,7 @@ function run_logical(p, rc, sc, tc, metrics, D, D1s, JH)
                  r_res_1, r_res_end, s_res_1, s_res_end, sat_coef1a, sat_coef1b,sat_coef2a, sat_coef2b,
                  int_res)
 
-     
     print("\nTiming for RK2:\n")
-
-
     tspan = (T0, TN)
     alg = Tsit5() #TSIT5 Doesnt preserve my second order convergence : (
     prob = ODEProblem(rhs, c, tspan, ps)
@@ -354,7 +351,7 @@ function run(dy, dz, dt)
     NZp = NZ + 1
 
     # Now make the coordinate transform
-    p = 6 # order of accuracy hehe
+    p = 4 # order of accuracy hehe
 
     print("\n Create Metrics: ")
     @time metrics = create_metrics_BP6(p, NZ, NY, zf_2, yf_2) # Initially do trivial one
@@ -396,7 +393,7 @@ function run(dy, dz, dt)
     return x
    
 end
-converge_2D_TSIT(exact; dt=1e-4, dy=0.125, dz=0.125, tc = (0, 5), yc=(-1, 1), zc = (-1, 1))
+converge_2D_TSIT(exact; dt=1e-4, dy=0.1, dz=0.1, tc = (0, 5), yc=(-1, 1), zc = (-1, 1))
 
         
 

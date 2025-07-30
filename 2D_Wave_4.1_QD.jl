@@ -23,43 +23,37 @@ include("./coordinate_transform.jl") # Add in coordinate tranforms
 # Wave speed
 const C::Float64 = 1
 
-struct Params{B, C, D, E}
+struct Params{B, C, E, F}
     NR::Int64
     NS::Int64
     R_GRID::B
     S_GRID::B
     D2::C
-    r1_res::D
-    r2_res::D
-    s1_res::D
-    s2_res::D
-    sat_1a::E
-    sat_1b::E
-    sat_2a::E
-    sat_2b::E
+    SAT::E
+    boundary::F
 end
 
 # Exact term for Manufactured Solution - Simplified y + z + t = u(y, z, t)
 function exact(t, s, r)
     # Dear god plz be merciful
-    inside = C * (yf_s(r, s) + zf_r(r, s)) - t
+    inside = C * (yf_s(r, s) + zf_r(r, s)) - t # start by removing time dependence
     return sin(inside)
 end
 
 # Exact term for Manufactured Solution Partial Derv with respect to either y or z
 function exact_derv_t(t, s, r)
     inside = C * (yf_s(r, s) + zf_r(r, s)) - t
-    return 0 # -cos(inside)
+    return 0
     #return -cos(inside)
 end
 
 function exact_derv_y(t, s, r)
-    inside = C * (yf_s(r, s) + zf_r(r, s)) - t
+    inside = C * (yf_s(r, s) + zf_r(r, s)) # - t
     return C * cos(inside)
 end
 
 function exact_derv_z(t, s, r)
-    inside = C * (yf_s(r, s) + zf_r(r, s)) - t
+    inside = C * (yf_s(r, s) + zf_r(r, s)) # - t
     return 0
 end
 
@@ -68,14 +62,14 @@ function source_term(t, s_mesh, r_mesh, res)
     nr = length(r_mesh)
     for i in eachindex(s_mesh)
         for j in eachindex(r_mesh)
-            inside = C * (yf_s(r_mesh[j], s_mesh[i]) + zf_r(r_mesh[j], s_mesh[i]))# - t
-            res[ns*nr + (i-1)*nr + j] += (-2*(C^4) * sin(inside))
+            inside = C * (yf_s(r_mesh[j], s_mesh[i]) + zf_r(r_mesh[j], s_mesh[i])) - t
+            res[ns*nr + (i-1)*nr + j] += (-2*(C^2) * sin(inside))
         end
     end
     return nothing
 end
 
-function initialize(s_mesh, r_mesh)
+function initialize(s_mesh, r_mesh, t)
     ns = length(s_mesh)
     nr = length(r_mesh)
     N = ns*nr
@@ -83,8 +77,8 @@ function initialize(s_mesh, r_mesh)
 
     for i in eachindex(s_mesh)
         for j in eachindex(r_mesh)
-            res[(i-1)*nr + j] = exact(0, s_mesh[i], r_mesh[j]) # U init
-            res[(i-1)*nr + j + N] = exact_derv_t(0, s_mesh[i], r_mesh[j]) # v init
+            res[(i-1)*nr + j] = exact(t, s_mesh[i], r_mesh[j])# U init
+            res[(i-1)*nr + j + N] = exact_derv_t(t, s_mesh[i], r_mesh[j]) # v init
         end
     end
     
@@ -93,48 +87,35 @@ end
 
 # Boundary Conditions:
 
-function g_y(y_mesh, z, t)
+function g_full!(R_GRID, S_GRID, NR, t, boundary)
     # Displacement U(0, Z, t)
-    return [exact(t, y, z) for y in y_mesh]
-end
-
-function g_y_n(y_mesh, z, t)
-    # Displacement U(0, Z, t)
-    return [exact_derv_y(t, y, z) for y in y_mesh]
-end
-
-function g_z(z_mesh, y, t)
-    return [exact(t, y, z) for z in z_mesh]
+    for i in eachindex(S_GRID)
+        for j in eachindex(R_GRID)
+            boundary[NR * (i - 1) + j] = exact(t, S_GRID[i], R_GRID[j])
+        end
+    end 
+    return nothing
 end
 
 function rhs(t, x, res, ps::Params)
-    # Total right hand side of our ODEs
+    # Represents RHS of ODE to solve
+    # Get setup
     N = (ps.NR + 1) * (ps.NS + 1)
-    u = x[1:N]
-    res[1:N] = x[N+1:end]
-    #print("\nTIME DEBUG -- U Vector Assignment:")
-    #res[1:N] = x[N+1:2*N] # move u = v part
-    #=
-    print("\nTIME DEBUG -- V Vector Assignment with D2:")
-    @time res[N+1:2*N] = D2 * u
-    print("\nTIME DEBUG -- SAT:")
-    @time SAT_Terms!(params, x, res, t) 
-    print("\nTIME DEBUG -- SOURCE:")
-    @time source_term(t, y_mesh, z_mesh, res) # update v with sbp
     
-    =#
+    # Step 1: Move V to U since du/dt = v
+    res[1:N] = x[N+1:end]
 
-    # SAT_Terms!(ps, x, res, t) 
-    source_term(t, ps.S_GRID, ps.R_GRID, res) # update v with sbp
+    # Step 2: update velocity
+    inter_res = zeros(N) # Tmp vector to hold boundaries for BVP
+    source_term(t, ps.S_GRID, ps.R_GRID, res) # update res with source term
+    SAT_Terms!(ps, x, res, t) # update res with - SAT of Boundary
 
-    #res[1+N:end] = -1 .* res[1+N:end]
-
-    #print(res[1+N:end])
-    #print(size(res), "\n", size(res[1+N:end]), '\n', size(ps.D2))
-    ans = Matrix(ps.D2) \ res[1+N:end]
-    res[1+N:end] = ans[:]
-    #print(ans, "\n\n")
-    #print(res[1+N:end], "\n\n")
+    #print(res[N+1:end])
+    # now solve for u everywhere
+    inter_res[:] = ps.D2 \ res[N+1:end]
+    res[1:N] .= inter_res
+    res[1+N:end] .= inter_res
+    # print("\n UGH", x)
     return nothing
 end
 
@@ -154,24 +135,11 @@ OUTPUT:
     - Combine stacked vector [0, ..., v] for next time step of all SAT terms.
 """
 function SAT_Terms!(ps::Params, x, res, t)
-    # prelim setup to clean the rest up
-    NSp = ps.NS+1
-    NRp = ps.NR + 1
-
     # Dirichlet Terms
-    # params from E + D 2014
-    beta = 1
-    get_s_vectors!(x, ps.s1_res, ps.s2_res, ps.NR, ps.NS, 1, ps.NR+1)
-    get_r_vectors!(x, ps.r1_res, ps.r2_res, ps.NR, ps.NS, 1, ps.NS+1)
-
-    # fault (y=y1 case) normal is in r dir so use crr
-    # R Normal Terms
     # sat f and r 
-    res[NSp*NRp+1:end] .+= (ps.sat_1a * (ps.r1_res .- g_z(ps.R_GRID, ps.S_GRID[1],  t))) .+ (ps.sat_1b * (ps.r2_res .- g_z(ps.R_GRID, ps.S_GRID[end],  t)))
-    res[NSp*NRp+1:end] .+=  (ps.sat_2a * (ps.s1_res .- g_y(ps.S_GRID, ps.R_GRID[1],  t))) .+ (ps.sat_2b * (ps.s2_res .- g_y(ps.S_GRID, ps.R_GRID[end],  t)) )
-    
+    g_full!(ps.R_GRID, ps.S_GRID, ps.NR + 1, t, ps.boundary)
+    res[((ps.NR + 1) * (ps.NS + 1))+1:end] .+= ps.SAT * ps.boundary
     return nothing
-    
 end
 
 function run_logical(p, rc, sc, tc, metrics, D, D1s, JH)
@@ -229,11 +197,6 @@ function run_logical(p, rc, sc, tc, metrics, D, D1s, JH)
     D2 ./= J
     @assert issparse(D2)
 
-    r_res_1 = zeros(NRp)
-    r_res_end = zeros(NRp)
-    s_res_1 = zeros(NSp)
-    s_res_end = zeros(NSp)
-
     alpha_r = -13 / DR
     sat_coef1a = kron(HIs, Ir) * transpose((alpha_r .* css) + (css *  kron(D1s[1], Ir))) * Ef ./ J
     sat_coef1b = kron(HIs, Ir) * transpose((alpha_r .* css) + (css *  kron(D1s[1], Ir))) * Er ./ J
@@ -242,25 +205,33 @@ function run_logical(p, rc, sc, tc, metrics, D, D1s, JH)
     sat_coef2a = kron(Is, HIr) * transpose((alpha_s .* crr) + (crr * kron(Is, D1s[2]))) * Es./ J
     sat_coef2b = kron(Is, HIr) * transpose((alpha_s .* crr) + (crr * kron(Is, D1s[2]))) * Ed ./ J
 
+    SAT = sat_coef1a + sat_coef1b + sat_coef2a + sat_coef2b
+    D2 = D2 + SAT # Account for D2 + SAT * U + boundary = 0
+
     @assert issparse(sat_coef1a)
     @assert issparse(sat_coef2b)
 
-    params = (NR, NS,  
+    boundary = zeros(N)
+    ps = Params(NR, NS,
                 R_GRID, S_GRID,  
                 D2,
-                r_res_1, r_res_end, s_res_1, s_res_end, 
-                sat_coef1a, sat_coef1b,sat_coef2a, sat_coef2b) # Last line is all about reducing perf
-    ps = Params(NR, NS, R_GRID,
-                 S_GRID,  D2,
-                 r_res_1, r_res_end, s_res_1, s_res_end, sat_coef1a, sat_coef1b,sat_coef2a, sat_coef2b)
+                SAT, boundary)
 
     
                  # Init for time stepping
     result = zeros(2 * (NR+ 1) * (NS + 1), NT)
-    c = initialize(S_GRID, R_GRID)
+    c = initialize(S_GRID, R_GRID, 0)
+
+    g_full!(R_GRID, S_GRID, NR+1, 0, boundary)
+    #print("Check C: ",  c[1:N], "\n\n")
+    #print("Check B: ",  boundary .- c[1:N], "\n\n")
+
+
+    @assert boundary == c[1:N]
      
     print("\nTiming for RK2:\n")
-    @time rk2_faster!(rhs, c, DT, result, T_GRID, ps)
+    #@time rk2_faster!(rhs, c, DT, result, T_GRID, ps)
+    @time multi_step_ivbp!(rhs, c, DT, result, T_GRID, ps)
      print("\nTiming for Plotting:\n")
     @time plot_2d!(R_GRID, S_GRID, T_GRID, result, exact)
 
@@ -291,14 +262,14 @@ function run(dy, dz, dt)
     NZp = NZ + 1
 
     # Now make the coordinate transform
-    p = 2 # order of accuracy hehe
+    p = 4 # order of accuracy hehe
 
     print("\n Create Metrics: ")
     @time metrics = create_metrics_BP6(p, NZ, NY, zf_2, yf_2) # Initially do trivial one
     
 
     print("\n Get Ops: ")
-    @time JH, D, H = get_operators_BP6(p, NZ, NY, 1.0, ZN - Z0, YN - Y0; metrics=metrics)
+    @time JH, D, H = get_operators_BP6(p, NZ, NY, 1.0, ZN - Z0, YN - Y0; metrics=metrics, afc=false)
 
     print("\n")
     # Get 1st Derivative Operators
