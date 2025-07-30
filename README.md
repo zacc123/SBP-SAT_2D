@@ -13,12 +13,14 @@ As of 7-30-2025,
 - Added Unit Testing to run at beginning of Var Coeffs 3.2 and beyond
     - Currently include basic tests for operator and vectors to make sure things make sense
 - Changed 3.2 Var coeff to correct lift out operator, instead of using a function
-- 4.1 is QD and is still showing some issue
+- 4.1 is QD and is working and tested on p=2,4,6 with no coordinate transform for afc and not
+    - AFC is showing convergence to 2,3,4 while non-AFC is 2, 4, 5 for the few steps I'm testing
+- Converge_2D updated to now run through p=2,4,6 all at once now
 
 
 As of 7-10-2025,
 - Some peformance changes made to 2D Variable Coefficient code now "2D_Wave_3.1_VarCoeffs_Faster.jl"
-    - **This is now the one to run for any experiments**
+    - **This is now the one to run for any experiments (Now 3.2)**
 - Shifted AFC operators and Normal FC operators to come from get_ops_draft_1.1.jl (need to rename tho haha)
 - Changes tested with the following settings:
     - p=2,4,6 for $y(r, s) = s, x(r, s) = 2r$ on grid: $y \in (-1, 1), x \in (-2, 2)$

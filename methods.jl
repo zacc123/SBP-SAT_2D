@@ -127,8 +127,10 @@ function multi_step_ivbp!(f!, c, h, result, time_mesh, params)
         # Do the 2 Step RK
 
         # Step1
-        f!(time_mesh[n], result[:, n-1], result[:, n], params)
+        tmp_vec1 .= 0
 
+        f!(time_mesh[n], result[:, n-1], tmp_vec1, params)
+        result[:, n] .= tmp_vec1[:]
     end
     
     return nothing

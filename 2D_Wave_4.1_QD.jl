@@ -44,7 +44,7 @@ end
 function exact_derv_t(t, s, r)
     inside = C * (yf_s(r, s) + zf_r(r, s)) - t
     return 0
-    #return -cos(inside)
+    # return -cos(inside)
 end
 
 function exact_derv_y(t, s, r)
@@ -63,7 +63,7 @@ function source_term(t, s_mesh, r_mesh, res)
     for i in eachindex(s_mesh)
         for j in eachindex(r_mesh)
             inside = C * (yf_s(r_mesh[j], s_mesh[i]) + zf_r(r_mesh[j], s_mesh[i])) - t
-            res[ns*nr + (i-1)*nr + j] += (-2*(C^2) * sin(inside))
+            res[ns*nr + (i-1)*nr + j] +=  - (2*(C^4) * sin(inside))
         end
     end
     return nothing
@@ -137,6 +137,7 @@ OUTPUT:
 function SAT_Terms!(ps::Params, x, res, t)
     # Dirichlet Terms
     # sat f and r 
+    ps.boundary .= 0
     g_full!(ps.R_GRID, ps.S_GRID, ps.NR + 1, t, ps.boundary)
     res[((ps.NR + 1) * (ps.NS + 1))+1:end] .+= ps.SAT * ps.boundary
     return nothing
@@ -230,8 +231,8 @@ function run_logical(p, rc, sc, tc, metrics, D, D1s, JH)
     @assert boundary == c[1:N]
      
     print("\nTiming for RK2:\n")
-    #@time rk2_faster!(rhs, c, DT, result, T_GRID, ps)
     @time multi_step_ivbp!(rhs, c, DT, result, T_GRID, ps)
+    # @time multi_step_ivbp!(rhs, c, DT, result, T_GRID, ps)
      print("\nTiming for Plotting:\n")
     @time plot_2d!(R_GRID, S_GRID, T_GRID, result, exact)
 
@@ -239,7 +240,7 @@ function run_logical(p, rc, sc, tc, metrics, D, D1s, JH)
     return result[:, end]
 end
 
-function run(dy, dz, dt)
+function run(dy, dz, dt, p)
     #=
     Main is the entire simulation run, starting with physical definition then to logical
 
@@ -262,14 +263,14 @@ function run(dy, dz, dt)
     NZp = NZ + 1
 
     # Now make the coordinate transform
-    p = 4 # order of accuracy hehe
+    # p = 6 # order of accuracy hehe
 
     print("\n Create Metrics: ")
     @time metrics = create_metrics_BP6(p, NZ, NY, zf_2, yf_2) # Initially do trivial one
     
 
     print("\n Get Ops: ")
-    @time JH, D, H = get_operators_BP6(p, NZ, NY, 1.0, ZN - Z0, YN - Y0; metrics=metrics, afc=false)
+    @time JH, D, H = get_operators_BP6(p, NZ, NY, 1.0, ZN - Z0, YN - Y0; metrics=metrics, afc=true)
 
     print("\n")
     # Get 1st Derivative Operators
@@ -304,7 +305,7 @@ function run(dy, dz, dt)
     return x
    
 end
-converge_2D(exact; dt=1e-4, dy=0.25, dz=0.25, tc = (0, 1), yc=(-1, 1), zc = (-1, 1))
+converge_2D(exact; dt=1e-4, dy=0.125, dz=0.125, tc = (0, 1), yc=(-1, 1), zc = (-1, 1))
 
         
 
