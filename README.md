@@ -7,6 +7,15 @@ Repo to keep track of 2D SBP-SAT Work for eventual use in the Thrase.jl project 
 Implement the SBP-SAT methods for the 2D elasticity equations in (Erickson + Dunham, 2014), (Erickson, et al. 2020), (Almquist + Dunham 2020), (Kozdon, et al. 2021) among others (See links to papers below : ) ) using Variable Coefficients, coordinate transforms, and all that fun stuff. Ultimate goal is to take what's implemented here and use it in the [Thrase.jl](https://github.com/Thrase/Thrase.jl) code base for SEAS work.
 
 ## Current Progress:
+As of 7-30-2025,
+- Added Static 2D problem, solving for $u(x, y, t) = sin(C(x+y) - t$, with $u_{xx} + u_{yy} + f = 0$
+    - Tested with p = 2, 4 and converges correctly
+- Added Unit Testing to run at beginning of Var Coeffs 3.2 and beyond
+    - Currently include basic tests for operator and vectors to make sure things make sense
+- Changed 3.2 Var coeff to correct lift out operator, instead of using a function
+- 4.1 is QD and is still showing some issue
+
+
 As of 7-10-2025,
 - Some peformance changes made to 2D Variable Coefficient code now "2D_Wave_3.1_VarCoeffs_Faster.jl"
     - **This is now the one to run for any experiments**
