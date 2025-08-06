@@ -109,3 +109,11 @@ function diagonify(res_diag, matrix)
     end
     return nothing
 end
+
+struct Params_1D{B, C, E, F}
+    NR::Int64
+    R_GRID::B
+    D2::C
+    SAT::E
+    boundary::F
+end
