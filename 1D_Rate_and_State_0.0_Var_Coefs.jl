@@ -11,6 +11,7 @@ using Plots
 using SparseArrays
 using BenchmarkTools
 using DifferentialEquations
+using NaNMath
 
 # Local files for this project
 include("./methods.jl") # Pull in Euler and RK2 Explicit Methods
@@ -25,134 +26,13 @@ include("./1D_ops.jl")
 
 # include("./unit_tests.jl")
 
-const Lx::Int64 = 80
-const AFC::Bool = true
-const C::Float64 = 1
-const global year_seconds::Float64 = 60 * 60 * 24 * 365.25
+global const Lx::Int64 = 80
+global const AFC::Bool = true
+global const C::Float64 = 1
+global const year_seconds::Float64 = 60 * 60 * 24 * 365.25
 global const ctr = Ref{Int64}(1) 
-# Now matches thrase minus z comps
-struct ODE_params
-    reject_step# a is a bool array
-    sim_years
-    Vp # array vector
-    D2 # c is sparse array
-    u
-    Δτ
-    τf
-    b
-    μshear
-    RSa
-    RSb
-    σn
-    η
-    RSV0
-    τ0
-    RSDc
-    RSf0
-    B
-    x
-    T
-    e
-    Lx    
-    save_stride_fields
-end
-
-function RHS(dψV, ψδ, params, t) # header now matching Thrase
-
-        # Start with Unpacking
-        Vp = params.Vp
-        A = params.D2
-        u = params.u
-        Δτ = params.Δτ
-        τf = params.τf
-        b = params.b
-        μshear = params.μshear
-        RSa = params.RSa
-        RSb = params.RSb
-        σn = params.σn
-        η = params.η
-        RSV0 = params.RSV0
-        τ0 = params.τ0
-        RSDc = params.RSDc
-        RSf0 = params.RSf0
-        B = params.B
-        x = params.x 
-        T = params.T
-        e = params.e
-        Lx = params.Lx
-
-        current_time = t ./ 31556926
-        print("TIME [YRS] = $(current_time).\n")
-
-        ψ  = ψδ[1]
-        δ  = ψδ[2] .* ones(size(x))
-        #print("\nDelta before:", size(δ), "\n")
-        bdry_vec_strip!(b, B, x, δ ./ 2, (t .* Vp./2)*ones(size(x)), Lx)
-
-        # Step 3... Solve for U in the domain
-        u[:] = A \ b
-
-        # set up rates of change for  state and slip
-        dψ = dψV[1]
-        V  = dψV[2]
-        
-        dψ = 0 # initialize values to 0
-        V  = 0 # initialize values to 0
-        
-        # Update the fault data
-        Δτ .= 0
-        
-        #print("\nSize of Delta Tau:", size(Δτ), '\n')
-        Δτ .= computetraction_stripped(T, u, e)
-        τf .= τ0 .+ Δτ
-
-        # Do safe-guarded Newton at every node in rate-and-state friction zone in order to solve for slip rate V.
-        ψn = ψ
-        an = RSa
-
-        τn = (Δτ .+ τ0)[1]
-    
-        VR = abs(τn / η)
-        VL = -VR
-        Vn = V
-        obj_rs(V) = rateandstate(V, ψn, σn, τn, η, an, RSV0)
-        (Vn, _, iter) = newtbndv(obj_rs, VL, VR, Vn; ftol = 1e-9,
-                                    atolx = 1e-9, rtolx = 1e-9)
-        V = Vn # update slip rate
-        dψV[2] = Vn
-        dψV[1] = (RSb * RSV0 / RSDc) * (exp((RSf0 - ψn) / RSb) - abs(Vn) / RSV0) # update aging law
-
-        if  abs(current_time - 2.000) < 0.02
-            plot(x, u)
-            png("./1D_RS_Results/u_2.png")
-            print("Check 2:\n", u,"\n")
-        end
 
 
-        if  abs(current_time - 20.000) < 0.02
-            plot(x, u)
-            png("./1D_RS_Results/u_20.png")
-            print("Check 20:\n", u,"\n")
-        end
-
-        if  abs(current_time - 200.000) < 4 && current_time < 200
-            plot(x, u)
-            png("./1D_RS_Results/u_196.png")
-            print("Check 196:\n", u,"\n")
-        end
-        if  abs(current_time - 200.000) < 1 && current_time > 200
-            plot(x, u)
-            print("Check 201:\n", u,"\n")
-            png("./1D_RS_Results/u_200.png")
-        end
-
-        if  abs(current_time - 2000.000) < 4 && current_time > 200
-            plot(x, u)
-            print("Check 200:\n", u,"\n")
-            png("./1D_RS_Results/u_2000.png")
-        end
-        return nothing
-    end
 
 # RHS above mimics ode_fun fronm thrase, mostly copied and adjusted at this point
 # Might have some issues with immutability and params, may need to adjust scalars to vectors
@@ -165,8 +45,8 @@ function main()
 
     ### All Param setting from Thrase Stripped driver
     # how many years to simulate
-    sim_years = 2000
-     pth = "./res/"
+    sim_years = 25
+    pth = "./res/"
     #
     # loading rate
     Vp = 1e-9
@@ -197,9 +77,9 @@ function main()
     stride_space = 1
     # write-out every "stride_time" time steps
     stride_time = 20
-
+    dx = .10
     # start with grid setup
-    X0, XN, dX = (0, Lx, 0.1) # Physical Grid size 
+    X0, XN, dX = (0, Lx, dx) # Physical Grid size 
                               # Remember that logical space goes to x \in (-1, 1)
 
     T0, TN, dT = (0, sim_years * 3600*24*365, 1) # Time grid setup
@@ -207,7 +87,7 @@ function main()
     X_GRID = X0:dX:XN # store range objects
     T_GRID = T0:dT:TN 
 
-    NX = ((XN - X0) / dX ) # - 1 # Keeping number of nodes with paper conventions
+    NX = ((XN - X0) / dX ) #  Keeping number of nodes with paper conventions
     NX = Int(NX)
     NXp = NX + 1
 
@@ -315,6 +195,7 @@ function main()
     sat_coef1a = HIr * transpose((alpha_r .* crr) + (crr *  Dr_sat)) * Es ./ J
     sat_coef1b = HIr * transpose((alpha_r .* crr) + (crr *  Dr_sat)) * Ed ./ J
 
+    #print(Array(sat_coef1a))
     # Account for QD case where 0 = D2u + SATu + f
     SAT = sat_coef1a + sat_coef1b
     D2 += SAT
@@ -322,11 +203,11 @@ function main()
     b = zeros(NXp)
     B = [sat_coef1a, sat_coef1b]
     t = 0.0
-    T = [Dr_tmp]
+    T = [μ .* Dr_tmp]
     e = (Es, Ed)
 
     δ = zeros(NXp)
-    print("\nDelta before:", size(δ), ' ', length(X_GRID), "\n")
+
     bdry_vec_strip!(b, B, X_GRID, δ ./ 2, (t .* Vp./2)*ones(NXp), Lx)
 
     u = D2 \ b
@@ -344,11 +225,11 @@ function main()
                                         RSamax)) + η * RSVinit
 
     # Set initial state variable according to benchmark
-    θ = (RSDc ./ RSV0) .* exp.((RSa / RSb) .* log.((2 .* RSV0 ./ RSVinit) .*
+    θ = (RSDc ./ RSV0) .* exp.((RSa ./ RSb) .* log.((2 .* RSV0 ./ RSVinit) .*
         sinh.((τ0 .- η .* RSVinit) ./ (RSa .* σn))) .- RSf0 ./ RSb)
 
     # Initialize psi version of state variable
-    ψ = RSf0 .+ RSb .* log.(RSV0 * θ / RSDc)
+    ψ = RSf0 .+ RSb .* log.(RSV0 .* θ ./ RSDc)
         
     # Set initial condition for index 1 DAE - this is a stacked vector of psi, followed by slip
     ψδ = zeros(2)  #because length(ψ) = δNp,  length(δ) = Nz+1
@@ -418,46 +299,155 @@ function main()
     plot(sol.t, sol[2, :])
     png("./1D_RS_Results/delta.png")
 
+    plot(log.(sol.t), NaNMath.log.(sol[2, :]))
+    png("./1D_RS_Results/delta_log.png")
+
     plot(sol.t, sol[1, :])
     png("./1D_RS_Results/psi.png")
 
-    plot(log.(sol.t), log.(sol[1, :]))
+    plot(log.(sol.t), NaNMath.log.(sol[1, :]))
     png("./1D_RS_Results/psi_log.png")
     #@time sol = solve(prob, alg; abstol=1e-10, reltol=1e-10)
 
-    plot_slip(pth*"slip.dat")
-    png("./1D_RS_Results/slip.png")
+    # examples of how ot plot times series of shear stress:
+    plot_fault_time_series("slip", pth*"fltst_strk000.txt")
+    png("./res/slip.png")
+    plot_fault_time_series("slip_rate", pth*"fltst_strk000.txt")
+    png("./res/slip_rate.png")
     
     return nothing
 end
 
+# Now matches thrase minus z comps
+struct ODE_params{a, b, c, d}
+    reject_step::a
+    sim_years::Int64
+    Vp::b # array vector
+    D2::c # c is sparse array
+    u::d
+    Δτ
+    τf
+    b
+    μshear
+    RSa
+    RSb
+    σn
+    η
+    RSV0
+    τ0
+    RSDc
+    RSf0
+    B
+    x
+    T
+    e
+    Lx    
+    save_stride_fields
+end
 
-#=
-=#
+function RHS(dψV, ψδ, params, t) # header now matching Thrase
 
-function nm_rs(f, df, v, ψ, tol, η, τ, nσ)
-    # Newton method for R+S
-    MAX_ITERATIONS = 1000
-    # Set initial guess and difference
-    y_v = v
-    y_prev = v
-    diff = 1000000
-    cnt = 0
+        # Start with Unpacking
+        Vp = params.Vp
+        A = params.D2
+        u = params.u
+        Δτ = params.Δτ
+        τf = params.τf
+        b = params.b
+        μshear = params.μshear
+        RSa = params.RSa
+        RSb = params.RSb
+        σn = params.σn
+        η = params.η
+        RSV0 = params.RSV0
+        τ0 = params.τ0
+        RSDc = params.RSDc
+        RSf0 = params.RSf0
+        B = params.B
+        x = params.x 
+        T = params.T
+        e = params.e
+        Lx = params.Lx
 
-    while diff > tol && cnt < MAX_ITERATIONS
-        # While diff between terms is greater than the tolerance, iterate through
-        y_v1 = y_v - (1 / (1 + (nσ/η)*df(v, ψ))) * (y_v - (1/η) *(nσ * f(v, ψ) - τ))
-        diff = abs(y_v1 - y_v)
-        y_v = y_v1
-        cnt+=1
+        current_time = t ./ 31556926
+        print("TIME [YRS] = $(current_time).\n")
+
+        ψ  = ψδ[1]
+        δ = zeros(size(x))
+        δ[1] = ψδ[2]
+
+        remote = zeros(size(x))
+        remote[end] = (t .* Vp./2)
+      
+        
+        #print("\nDelta before:", size(δ), "\n")
+        bdry_vec_strip!(b, B, x, δ ./ 2, remote, Lx)
+
+        # Step 3... Solve for U in the domain
+        u[:] = A \ b
+
+
+        # set up rates of change for  state and slip
+        dψ = dψV[1]
+        V  = dψV[2]
+        
+        dψ = 0 # initialize values to 0
+        V  = 0 # initialize values to 0
+        
+        # Update the fault data
+        Δτ .= 0
+        
+        #print("\nSize of Delta Tau:", size(Δτ), '\n')
+        Δτ .= computetraction_stripped(T, u, e)
+        τf .= τ0 .+ Δτ
+
+        # Do safe-guarded Newton at every node in rate-and-state friction zone in order to solve for slip rate V.
+        ψn = ψ
+        an = RSa
+
+        τn = (Δτ .+ τ0)[1]
+    
+        VR = abs(τn / η)
+        VL = -VR
+        Vn = V
+        obj_rs(V) = rateandstate(V, ψn, σn, τn, η, an, RSV0)
+        (Vn, _, iter) = newtbndv(obj_rs, VL, VR, Vn; ftol = 1e-9,
+                                    atolx = 1e-9, rtolx = 1e-9)
+        V = Vn # update slip rate
+        dψV[2] = Vn
+        dψV[1] = (RSb * RSV0 / RSDc) * (exp((RSf0 - ψn) / RSb) - abs(Vn) / RSV0) # update aging law
+
+        if  abs(current_time - 2.000) < 0.02
+            plot(x, u)
+            png("./1D_RS_Results/u_2.png")
+            print("Check 2:\n", u,"\n")
+        end
+
+
+        if  abs(current_time - 20.000) < 0.02
+            plot(x, u)
+            png("./1D_RS_Results/u_20.png")
+            print("Check 20:\n", u,"\n")
+        end
+
+        if  abs(current_time - 200.000) < 4 && current_time < 200
+            plot(x, u)
+            png("./1D_RS_Results/u_196.png")
+            print("Check 196:\n", u,"\n")
+        end
+        if  abs(current_time - 200.000) < 1 && current_time > 200
+            plot(x, u)
+            print("Check 201:\n", u,"\n")
+            png("./1D_RS_Results/u_200.png")
+        end
+
+        if  abs(current_time - 2000.000) < 4 && current_time > 200
+            plot(x, u)
+            print("Check 200:\n", u,"\n")
+            png("./1D_RS_Results/u_2000.png")
+        end
+        return nothing
     end
 
-    if cnt == MAX_ITERATIONS
-        print("OOPS.... NM didnt converge >.<\n")
-    end 
-
-    return y_v
-
-end
 
 main()
