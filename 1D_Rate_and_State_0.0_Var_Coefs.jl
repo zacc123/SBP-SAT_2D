@@ -36,7 +36,7 @@ global const ctr = Ref{Int64}(1)
 
 # RHS above mimics ode_fun fronm thrase, mostly copied and adjusted at this point
 # Might have some issues with immutability and params, may need to adjust scalars to vectors
-
+pth = "./res/"
 function main()
 
     #########################
@@ -45,7 +45,9 @@ function main()
 
     ### All Param setting from Thrase Stripped driver
     # how many years to simulate
-    sim_years = 25
+    sim_years = 2000
+
+
     pth = "./res/"
     #
     # loading rate
@@ -77,7 +79,7 @@ function main()
     stride_space = 1
     # write-out every "stride_time" time steps
     stride_time = 20
-    dx = .10
+    dx = 10
     # start with grid setup
     X0, XN, dX = (0, Lx, dx) # Physical Grid size 
                               # Remember that logical space goes to x \in (-1, 1)
@@ -203,7 +205,7 @@ function main()
     b = zeros(NXp)
     B = [sat_coef1a, sat_coef1b]
     t = 0.0
-    T = [μ .* Dr_tmp]
+    T = [μ .* Dr_tmp] # traction term with mu added!
     e = (Es, Ed)
 
     δ = zeros(NXp)
@@ -292,7 +294,7 @@ function main()
     prob = ODEProblem(RHS, ψδ, tspan, odeparam)
     create_text_files(pth, flt_loc, flt_loc_indices, stations, station_strings, station_indices, 0, RSVinit, δ, τ0, θ)
     # Solve DAE using Tsit5(), an adaptive Runge-Kutta method
-    sol = solve(prob; dt=0.2,
+    sol = solve(prob, Tsit5(); dt=0.2,
              abstol = 1e-5, reltol = 1e-5, save_everystep=true, gamma = 0.2,
              internalnorm=(x, _)->norm(x, Inf), callback=cb_fun)
 
@@ -376,6 +378,8 @@ function RHS(dψV, ψδ, params, t) # header now matching Thrase
         δ = zeros(size(x))
         δ[1] = ψδ[2]
 
+        
+
         remote = zeros(size(x))
         remote[end] = (t .* Vp./2)
       
@@ -451,3 +455,8 @@ function RHS(dψV, ψδ, params, t) # header now matching Thrase
 
 
 main()
+# examples of how ot plot times series of shear stress:
+    plot_fault_time_series("slip", pth*"fltst_strk000.txt")
+    png("./res/slip.png")
+    plot_fault_time_series("slip_rate", pth*"fltst_strk000.txt")
+    png("./res/slip_rate.png")

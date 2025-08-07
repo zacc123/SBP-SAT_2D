@@ -1,80 +1,3 @@
-using LinearAlgebra
-using SparseArrays
-using NaNMath
-
-# Changed to only include 2 Faces
-function bdry_vec_strip!(g, B, x, slip_data, remote_data, Lx)
-
-    g[:] .= 0
-
-    # fault (Dirichlet):
-    vf = slip_data
-    g[:] += B[1] * vf
-
-
-    # FACE 2 (Dirichlet):
-    vf = remote_data
-    g[:] += B[2] * vf
-
-    return nothing
-  
-end
-
-function computetraction_stripped(T, u, e)
-    e1 = e[1]
-    return (e1' * T[1]* u)[1] 
-end
-
-function rateandstate(V, psi, σn, ϕ, η, a, V0)
-    Y = (1 ./ (2 .* V0)) .* exp.(psi ./ a)
-    f = a .* asinh.(V .* Y)
-    dfdV  = a .* (1 ./ sqrt.(1 .+ (V .* Y).^2)) .* Y
-  
-    g    = σn .* f    .+ η .* V .- ϕ
-    dgdV = σn .* dfdV .+ η
-    #print(g, dgdV)
-    (g[1], dgdV[1])
-end
-
-function newtbndv(func, xL, xR, x; ftol = 1e-6, maxiter = 500, minchange=0,
-                    atolx = 1e-4, rtolx = 1e-4)
-    (fL, _) = func(xL)
-    (fR, _) = func(xR)
-    if fL .* fR > 0
-        #print(fL, "\n",fR, "\n")
-      return (typeof(x)(NaN), typeof(x)(NaN), -maxiter)
-    end
-  
-    (f, df) = func(x)
-    dxlr = xR - xL
-  
-    for iter = 1:maxiter
-      dx = -f / df
-      x  = x + dx
-  
-      if x < xL || x > xR || abs(dx) / dxlr < minchange
-        x = (xR + xL) / 2
-        dx = (xR - xL) / 2
-      end
-  
-      (f, df) = func(x)
-  
-      if f * fL > 0
-        (fL, xL) = (f, x)
-      else
-        (fR, xR) = (f, x)
-      end
-      dxlr = xR - xL
-  
-      if abs(f) < ftol && abs(dx) < atolx + rtolx * (abs(dx) + abs(x))
-        return (x, f, iter)
-      end
-    end
-    return (x, f, -maxiter)
-  end
-
-
-  ### UTILS
 using Plots
 using SparseArrays
 using LinearAlgebra
@@ -106,7 +29,7 @@ function create_text_files(pth, flt_loc, flt_loc_indices, stations, station_stri
   #write out initial data into devol.txt:
   vv = Array{Float64}(undef, 1, 2+length(flt_loc))
     vv[1] = t
-    vv[2] = NaNMath.log10(RSVinit)
+    vv[2] = log10(RSVinit)
     vv[3:end] = δ[flt_loc_indices]
     open(path_to_slip, "a") do io
         writedlm(io, vv)
@@ -123,9 +46,9 @@ function create_text_files(pth, flt_loc, flt_loc_indices, stations, station_stri
     ww = Array{Float64}(undef, 1, 5)
     ww[1] = t
     ww[2] = δ[station_indices[n]]
-    ww[3] = NaNMath.log10(RSVinit)
+    ww[3] = log10(RSVinit)
     ww[4] = τz0
-    ww[5] = NaNMath.log10(θ[station_indices[n]])  # 
+    ww[5] = log10(θ[station_indices[n]])  # 
     open(XXX, "w") do io
       write(io, "# problem=SEAS Benchmark BP1-QD\n")  # 
       write(io, "# code=Thrase\n")
@@ -148,8 +71,8 @@ function write_to_file(pth, ψδ, t, i, zf, flt_loc, flt_loc_indices, station_st
   Vmax = 0.0
 
   if isdefined(i,:fsallast) 
-    δNp = 1
-    Nz = 0
+    δNp = p.δNp
+    Nz = p.N
     dψV = i.fsallast
     dψ = @view dψV[1:δNp]
     V = @view dψV[δNp .+ (1:Nz+1)]
@@ -164,7 +87,7 @@ function write_to_file(pth, ψδ, t, i, zf, flt_loc, flt_loc_indices, station_st
     if mod(ctr[], p.save_stride_fields) == 0 || t == (p.sim_years ./ 31556926)
       vv = Array{Float64}(undef, 1, 2+length(flt_loc))
       vv[1] = t
-      vv[2] = NaNMath.log10(Vmax)
+      vv[2] = log10(Vmax)
       vv[3:end] = δ[flt_loc_indices]
       open(path_to_slip, "a") do io
         writedlm(io, vv)
@@ -174,9 +97,9 @@ function write_to_file(pth, ψδ, t, i, zf, flt_loc, flt_loc_indices, station_st
         ww = Array{Float64}(undef, 1, 5)
         ww[1] = t
         ww[2] = δ[station_indices[i]]
-        ww[3] = NaNMath.log10(V[station_indices[i]])
+        ww[3] = log10(V[station_indices[i]])
         ww[4] = τf[station_indices[i]]
-        ww[5] = NaNMath.log10(θ[station_indices[i]])
+        ww[5] = log10(θ[station_indices[i]])
 
         XXX = pth * "fltst_strk"*station_strings[i]*".txt"
         open(XXX, "a") do io
@@ -228,11 +151,10 @@ function plot_slip(filename)
 
   grid = readdlm(filename, Float64)
   sz = size(grid)
-  print("SIZE: $(sz)")
   flt_loc = grid[1,3:end]
   T = grid[2:sz[1],1]
   maxV = grid[2:end, 2]
-  slip = grid[2:sz[1], 3:3]
+  slip = grid[2:sz[1], 3:sz[2]]
   N = size(slip)[2]
 
 
@@ -244,11 +166,10 @@ function plot_slip(filename)
 
   #Assumes an initial interseismic period
   #This for-loop only plots completed phases
-  print("IND: $(ind)")
   for i = 1:2:length(ind)-2
     
     T1 = T[ind[i]]:interval[1]:T[ind[i+1]];
-    print("\nT1: $(T1)\n")
+
     W1 = interp1(T,slip[:,1],T1)';
     
     for j = 2:N 
@@ -282,19 +203,13 @@ function plot_slip(filename)
   i = length(ind)-1;
   T1 = T[ind[i]]:interval[1]:T[ind[i+1]];
   W1 = interp1(T,slip[:,1],T1)';
-      print("\nT1 2: $(T1)\n")
-      print("\nW1 2: $(W1)\n")
-      print("\ni: $(i)\n")
-      print("\nflt loc 2: $(flt_loc)\n")
-      nodes = length(W1)
+      
       for j = 2:N 
         w1 = interp1(T,slip[:,j],T1)';
         W1 = [W1; w1]
       end
-      print("\nW1 3: $(W1)\n")
       if i == 1
-        #plot(W1, -flt_loc, linecolor = :blue, legend = false) #interseismic phase
-        plot(1:nodes, W1, linecolor = :blue, legend = false) #interseismic phase
+        plot(W1, -flt_loc, linecolor = :blue, legend = false) #interseismic phase
       else
         plot!(W1, -flt_loc, linecolor = :blue, legend = false) #interseismic phase
       end
@@ -345,11 +260,11 @@ function plot_fault_time_series(field, filename)
  @show field
   if field == "slip"
     y = grid[9:sz[1],2]
-    plot(T, y, label="slip")
+    plot(T, y)
     ylabel!("slip [m]")
   elseif field == "slip_rate"
     y = grid[9:sz[1],3]
-    plot(T, y, label="slip rate")
+    plot(T, y)
     ylabel!("slip rate [m/s]")
   elseif field == "shear_stress"
     y = grid[9:sz[1],4]
@@ -496,7 +411,7 @@ function write_to_file_BP6(pth, ψδ, t, i, zf,flt_loc, flt_loc_indices, station
     # data for global.dat file
     uu = Array{Float64}(undef, 1, 3)
     uu[1] = t
-    uu[2] = NaNMath.log10(Vmax)
+    uu[2] = log10(Vmax)
     uu[3] = moment_density_rate(V, μshear, dz)
     open(path_to_global, "a") do io
       writedlm(io, uu)
@@ -505,7 +420,7 @@ function write_to_file_BP6(pth, ψδ, t, i, zf,flt_loc, flt_loc_indices, station
     if mod(ctr[], p.save_stride_fields) == 0 || t == (sim_years ./ 31556926)
       vv = Array{Float64}(undef, 1, 2+length(flt_loc))
       vv[1] = t
-      vv[2] = NaNMath.log10(Vmax)
+      vv[2] = log10(Vmax)
       vv[3:end] = δ[flt_loc_indices]
       open(path_to_slip, "a") do io
         writedlm(io, vv)
@@ -517,11 +432,11 @@ function write_to_file_BP6(pth, ψδ, t, i, zf,flt_loc, flt_loc_indices, station
         ww = Array{Float64}(undef, 1, 7)
         ww[1] = t
         ww[2] = δ[station_indices[i]]
-        ww[3] = NaNMath.(V[station_indices[i]])
+        ww[3] = log10(V[station_indices[i]])
         ww[4] = τf[station_indices[i]]
         ww[5] = P[station_indices[i]]
         ww[6] = q[station_indices[i]]
-        ww[7] = NaNMath.log10(θ[station_indices[i]-δlf+1])
+        ww[7] = log10(θ[station_indices[i]-δlf+1])
 
         XXX = pth * "fltst_strk"*stations[i]*".txt"
         open(XXX, "a") do io
@@ -552,7 +467,7 @@ function create_text_files_BP6(pth, flt_loc, flt_loc_indices, stations, station_
   # global.dat includes time series of maximum amplitude of slip rates, and moment density rates
   uu = Array{Float64}(undef, 1, 3)
   uu[1] = t
-  uu[2] = NaNMath.log10(RSVinit)   # V = V_init everywhere
+  uu[2] = log10(RSVinit)   # V = V_init everywhere
   uu[3] = μshear * RSVinit * 40 * 1e12 # constants come out of integral, int(dz) = length of RS domain = 40 km
   open(path_to_global, "w") do io
     # write(io, "# problem=SEAS Benchmark BP6-A\n")  # aging law
@@ -581,7 +496,7 @@ function create_text_files_BP6(pth, flt_loc, flt_loc_indices, stations, station_
   #write out initial data into devol.txt:
   vv = Array{Float64}(undef, 1, 2+length(flt_loc))
     vv[1] = t
-    vv[2] = NaNMath.log10(RSVinit)
+    vv[2] = log10(RSVinit)
     vv[3:end] = δ[flt_loc_indices]
     open(path_to_slip, "a") do io
         writedlm(io, vv)
@@ -599,11 +514,11 @@ function create_text_files_BP6(pth, flt_loc, flt_loc_indices, stations, station_
     ww = Array{Float64}(undef, 1, 7)
     ww[1] = t
     ww[2] = δ[station_indices[n]]
-    ww[3] = NaNMath.log10(RSVinit)
+    ww[3] = log10(RSVinit)
     ww[4] = τz0
     ww[5] = P[station_indices[n]]
     ww[6] = q[station_indices[n]]
-    ww[7] = NaNMath.log10(θ[station_indices[n]-δlf+1])  # subtract off number of points outside RS region?
+    ww[7] = log10(θ[station_indices[n]-δlf+1])  # subtract off number of points outside RS region?
     open(XXX, "w") do io
       # write(io, "# problem=SEAS Benchmark BP6-A\n")  # aging law
       write(io, "# problem=SEAS Benchmark BP6-S\n")  # slip law
@@ -621,3 +536,10 @@ function create_text_files_BP6(pth, flt_loc, flt_loc_indices, stations, station_
 
 end
 
+
+
+  export read_params, read_params_BP6, plot_slip, plot_fault_time_series, find_ind 
+  export find_station_index
+  export stepcheck, create_text_files, write_to_file
+  export animate_slip, interp1
+  export write_to_file_BP6, create_text_files_BP6
