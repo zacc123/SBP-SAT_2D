@@ -2,6 +2,136 @@ using LinearAlgebra
 using SparseArrays
 using NaNMath
 
+function sbp_operators_2D(p::Int, y0::Int, yN::Int, z0::Int, zN::Int, 
+    Ny::Int, Nz::Int, dy::Float64, dz::Float64)
+    # Wrapper around Alex's 1D 1st Derivative operators, then makes the correct 2D for z and y in 
+    # Erickson + Dunham 2014
+
+    #Is
+    Iy = sparse(Matrix{Float64}(I, Ny+1, Ny+1))
+    Iz = sparse(Matrix{Float64}(I, Nz+1, Nz+1))
+
+    y_grid = y0:dy:yN
+    z_grid = z0:dz:zN
+
+    mu = I(((Ny+1) * (Nz+1)))
+
+    # Finalize with the E matrices
+    ey0 = zeros(Ny+1)
+    ey0[1] = 1
+
+    eyn = zeros(Ny+1)
+    eyn[end] = 1
+
+    ez0 = zeros(Nz+1)
+    ez0[1] = 1
+
+    ezn = zeros(Nz+1)
+    ezn[end] = 1
+
+    Ef = kron(ey0*ey0', Iz)
+    Er = kron(eyn*eyn', Iz)
+    Es = kron(Iy, ez0*ez0')
+    Ed = kron(Iy, ezn*ezn')
+
+    @assert issparse(Ef)
+    # (D2y_test, S0_y, SN_y, HIy_test, Hy_test, r) = diagonal_sbp_D2(2, Ny; xc = (y0, yN))
+    # (D2z_test, S0_z, SN_z, HIz_test, Hz_test, r) = diagonal_sbp_D2(2, Nz; xc = (z0, zN))
+
+    # Grab Variable SBP operators from diagonal_sbp.jl
+    (D2y, S0y, SNy, HIy, Hy, ry) = variable_diagonal_sbp_D2(p, Ny, 1; xc = (y0,yN))
+    (D2z, S0z, SNz, HIz, Hz, rz) = variable_diagonal_sbp_D2(p, Nz, 1; xc = (z0,zN))
+
+    # Build BS terms since Diag ^ only returns SN, S0
+    BSy = SNy - S0y
+    BSz = SNz - S0z
+
+    return (D2y,  D2z, Iy, Iz, Hy, Hz, HIy, HIz, BSy, BSz, mu, Ef, Er, Es, Ed)
+end
+
+
+
+function sbp_operators_1D(SBPp::Int, x0::Float64, xN::Float64, Nx::Int, dx::Float64, μ::Float64, metrics)
+    # Wrapper around Alex's 1D 1st Derivative operators, then makes the correct 2D for z and y in 
+    # Erickson + Dunham 2014
+
+    AFC = true # Use Adapted Fully Compatible Operators from A&D
+
+    # Set up Initial Bits
+    Ix = sparse(Matrix{Float64}(I, Nx+1, Nx+1))
+
+    x_grid = x0:dx:xN
+    Lx = xN - x0
+
+    # Finalize with the E matrices
+    ex0 = spzeros(Nx+1)
+    ex0[1] = 1
+
+    exn = spzeros(Nx+1)
+    exn[end] = 1
+
+    Es = ex0*ex0'
+    Ed = exn*exn'
+
+    @assert issparse(Es)
+ 
+    # Grab Variable SBP operators from diagonal_sbp.jl
+    print("\n Get D2 Ops Almquist: ")
+    @time JH, D, H = get_operators_BP6(SBPp, Nx, Nx, μ, Lx, Lx; metrics=metrics, afc=AFC)
+    # Get 1st Derv Operators for SAT Terms and Traction
+    
+    print("\n")
+    D1x, HIx, Hx, _ =  diagonal_sbp_D1(SBPp, Nx; xc = (-1, 1))
+
+    D1x_SAT = spzeros(Nx+1, Nx+1) # Set normal for traction
+    D1x_SAT[1, :] = D1x[1, :]
+    D1x_SAT[end, :] = D1x[end, :]
+
+    T = [μ .* D1x] # Traction term
+
+    # Now get ready for SAT
+
+    # Following shennanigans to account for get_ops in 2D, but I want this in 1D
+    # Grab the jacobian for only first R Row of S, making it a 1D problem
+    J_tmp = zeros((Nx+1)*(Nx+1))
+    J = zeros(Nx+1)
+    stack!(J_tmp, metrics.J) # Stack J into same format as R, S
+    J .= J_tmp[1:Nx+1]
+
+    # Get Coef Matrices for SAT Terms
+    crr_tmp = spzeros((Nx+1) * (Nx+1),(Nx+1) * (Nx+1))
+    diagonify(crr_tmp, metrics.crr)
+    crr = crr_tmp[1:Nx+1, 1:Nx+1]
+    @assert issparse(crr)
+
+    D2 = D[1][1:Nx+1, 1:Nx+1]
+    D2 ./= J
+
+    @assert issparse(D2)
+
+    # Build Coefficients ahead of time since these will be multiplied by U - Boundary
+    alpha_r = -13 / dx
+    sat_coef1a = HIx * transpose((alpha_r .* crr) + (crr *  D1x_SAT)) * Es ./ J
+    sat_coef1b = HIx * transpose((alpha_r .* crr) + (crr *  D1x_SAT)) * Ed ./ J
+
+    #print(Array(sat_coef1a))
+    # Account for QD case where 0 = D2u + SATu + f
+    SAT = sat_coef1a + sat_coef1b
+    D2 += SAT
+
+    #if AFC == false || SBPp > 2
+        # Issue with LU for SBPp == 2 AFC because first and last rows are all 0s
+         D2 = lu(D2)
+    #end
+
+    B = [sat_coef1a, sat_coef1b]
+    e = (Es, Ed)
+
+    return (D2 = D2,
+            B = B,
+            T = T,
+            e = e)
+end
 # Changed to only include 2 Faces
 function bdry_vec_strip!(g, B, x, slip_data, remote_data, Lx)
 
